@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRealtimeAPI, SlideData } from "@/hooks/useRealtimeAPI";
 import { useFeedback } from "@/hooks/useFeedback";
 
@@ -249,8 +249,33 @@ function NextSlidePreview({
   );
 }
 
-// Splash screen
-function SplashScreen({ onStart }: { onStart: () => void }) {
+// Splash screen with PDF upload
+function SplashScreen({ onStart }: { onStart: (pdfSlides?: SlideData[]) => void }) {
+  const [uploadedPdfSlides, setUploadedPdfSlides] = useState<SlideData[] | null>(null);
+  const [isProcessingPdf, setIsProcessingPdf] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePdfUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || file.type !== 'application/pdf') {
+      alert('Please upload a PDF file');
+      return;
+    }
+
+    setIsProcessingPdf(true);
+    try {
+      const { convertPdfToSlides } = await import('@/utils/pdfToImages');
+      const slides = await convertPdfToSlides(file);
+      setUploadedPdfSlides(slides);
+      console.log(`✅ Converted ${slides.length} PDF pages to slides`);
+    } catch (error) {
+      console.error('❌ Failed to process PDF:', error);
+      alert('Failed to process PDF. Please try again.');
+    } finally {
+      setIsProcessingPdf(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
       <div className="text-center">
@@ -258,12 +283,61 @@ function SplashScreen({ onStart }: { onStart: () => void }) {
           Living Presentation
         </h1>
         <p className="max-w-md text-lg text-zinc-400">
-          Speak your ideas. Watch them become slides.
+          Upload your slides, then speak new ideas into existence.
         </p>
       </div>
 
+      {/* PDF Upload Section */}
+      <div className="flex flex-col items-center gap-4">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf"
+          onChange={handlePdfUpload}
+          className="hidden"
+        />
+
+        {!uploadedPdfSlides ? (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isProcessingPdf}
+            className="rounded-lg border-2 border-dashed border-zinc-600 bg-zinc-800/50 px-8 py-6 text-center transition-colors hover:border-zinc-400 hover:bg-zinc-800 disabled:opacity-50"
+          >
+            <div className="flex flex-col items-center gap-2">
+              <svg className="h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              <span className="text-lg font-medium text-white">
+                {isProcessingPdf ? 'Processing PDF...' : 'Upload Existing Slides (PDF)'}
+              </span>
+              <span className="text-sm text-zinc-500">Optional - or start with a blank presentation</span>
+            </div>
+          </button>
+        ) : (
+          <div className="rounded-lg border border-green-500/30 bg-green-500/10 px-8 py-4 text-center">
+            <div className="flex items-center gap-3">
+              <svg className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="text-lg font-medium text-green-400">
+                {uploadedPdfSlides.length} slides loaded
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setUploadedPdfSlides(null);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+              }}
+              className="mt-2 text-sm text-zinc-400 underline hover:text-zinc-300"
+            >
+              Upload different PDF
+            </button>
+          </div>
+        )}
+      </div>
+
       <button
-        onClick={onStart}
+        onClick={() => onStart(uploadedPdfSlides || undefined)}
         className="group relative overflow-hidden rounded-full bg-white px-12 py-4 text-lg font-semibold text-zinc-900 transition-all hover:scale-105 hover:shadow-2xl hover:shadow-white/20"
       >
         <span className="relative z-10">Start Presenting</span>
@@ -275,14 +349,14 @@ function SplashScreen({ onStart }: { onStart: () => void }) {
 
       <div className="mt-8 flex items-center gap-2 text-sm text-zinc-500">
         <MicIcon className="h-4 w-4" />
-        <span>Microphone access required</span>
+        <span>Microphone access required for new slides</span>
       </div>
     </div>
   );
 }
 
 // Main presenter view with controls
-function PresenterView({ onExit }: { onExit: () => void }) {
+function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialSlides?: SlideData[] }) {
   const {
     isConnected,
     isRecording,
@@ -293,6 +367,7 @@ function PresenterView({ onExit }: { onExit: () => void }) {
     start,
     stop,
     removeSlide,
+    addSlides,
     processFeedback,
   } = useRealtimeAPI();
 
@@ -311,6 +386,14 @@ function PresenterView({ onExit }: { onExit: () => void }) {
   const { feedback, unreadCount, dismissFeedback } = useFeedback(sessionId);
 
   const currentSlide = slideNav.index >= 0 ? slideNav.history[slideNav.index] : null;
+
+  // Add initial PDF slides to the queue when component mounts
+  useEffect(() => {
+    if (initialSlides && initialSlides.length > 0) {
+      addSlides(initialSlides);
+      console.log(`✅ Added ${initialSlides.length} PDF slides to queue`);
+    }
+  }, [initialSlides, addSlides]);
 
   // Separate pending slides by source
   const voiceSlides = pendingSlides.filter((s) => s.source === "voice");
@@ -470,17 +553,22 @@ function PresenterView({ onExit }: { onExit: () => void }) {
             {!isRecording && !isConnected && (
               <button
                 onClick={start}
-                className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+                className="flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
               >
-                Start Recording
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                  <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                </svg>
+                Record New Slide
               </button>
             )}
             {isRecording && (
               <button
                 onClick={stop}
-                className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600"
+                className="flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600"
               >
-                Stop
+                <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+                Stop Recording
               </button>
             )}
             <button
@@ -579,7 +667,7 @@ function PresenterView({ onExit }: { onExit: () => void }) {
           <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">
             <div className="border-b border-zinc-800 px-4 py-2">
               <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
-                Live Transcript
+                {isRecording ? "Recording New Slide..." : "Slide Description"}
               </span>
             </div>
             <div className="p-4">
@@ -587,7 +675,9 @@ function PresenterView({ onExit }: { onExit: () => void }) {
                 <p className="text-sm text-zinc-400">{transcript}</p>
               ) : (
                 <p className="text-sm italic text-zinc-700">
-                  {isRecording ? "Waiting for speech..." : ""}
+                  {isRecording
+                    ? "Describe your new slide idea..."
+                    : "Click 'Record New Slide' to describe a new slide idea"}
                 </p>
               )}
             </div>
@@ -675,10 +765,16 @@ function MicIcon({ className }: { className?: string }) {
 
 export default function Home() {
   const [started, setStarted] = useState(false);
+  const [pdfSlides, setPdfSlides] = useState<SlideData[] | undefined>(undefined);
+
+  const handleStart = (slides?: SlideData[]) => {
+    setPdfSlides(slides);
+    setStarted(true);
+  };
 
   if (!started) {
-    return <SplashScreen onStart={() => setStarted(true)} />;
+    return <SplashScreen onStart={handleStart} />;
   }
 
-  return <PresenterView onExit={() => setStarted(false)} />;
+  return <PresenterView onExit={() => setStarted(false)} initialSlides={pdfSlides} />;
 }

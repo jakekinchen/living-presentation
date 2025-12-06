@@ -38,7 +38,7 @@ export function useRealtimeAPI() {
   const connectionRef = useRef<DeepgramLiveConnection | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const lastIdeaTextRef = useRef<string>("");
+  const fullTranscriptRef = useRef<string>("");
 
   const processIdea = useCallback(
     async (title: string, content: string, category: string) => {
@@ -76,6 +76,10 @@ export function useRealtimeAPI() {
     setPendingSlides((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
+  const addSlides = useCallback((slides: SlideData[]) => {
+    setPendingSlides((prev) => [...prev, ...slides]);
+  }, []);
+
   const start = useCallback(async () => {
     if (connectionRef.current) return;
 
@@ -87,6 +91,9 @@ export function useRealtimeAPI() {
     }
 
     setError(null);
+    // Reset transcript for new recording session
+    fullTranscriptRef.current = "";
+    setTranscript("");
 
     const deepgram = createClient(apiKey);
     const connection = deepgram.listen.live({
@@ -141,18 +148,22 @@ export function useRealtimeAPI() {
         const text = alt?.transcript?.trim();
         if (!text) return;
 
-        // Show latest phrase in live transcript
-        setTranscript(text);
+        // When Deepgram marks the segment as final, add it to the full transcript
+        if (data.is_final || data.speech_final) {
+          // Accumulate the full transcript
+          fullTranscriptRef.current = fullTranscriptRef.current
+            ? `${fullTranscriptRef.current} ${text}`
+            : text;
 
-        // When Deepgram marks the segment as final, treat it as an idea
-        if ((data.is_final || data.speech_final) && text.length > 20) {
-          if (text === lastIdeaTextRef.current) return;
-          lastIdeaTextRef.current = text;
-
-          const words = text.split(/\s+/);
-          const title = words.slice(0, 6).join(" ");
-
-          void processIdea(title, text, "concept");
+          // Update the display with the accumulated transcript
+          setTranscript(fullTranscriptRef.current);
+        } else {
+          // Show interim results
+          setTranscript(
+            fullTranscriptRef.current
+              ? `${fullTranscriptRef.current} ${text}`
+              : text
+          );
         }
       }
     );
@@ -171,7 +182,10 @@ export function useRealtimeAPI() {
     });
   }, [processIdea]);
 
-  const stop = useCallback(() => {
+  const stop = useCallback(async () => {
+    // Get the accumulated transcript before clearing
+    const finalTranscript = fullTranscriptRef.current;
+
     if (recorderRef.current && recorderRef.current.state !== "inactive") {
       recorderRef.current.stop();
     }
@@ -190,7 +204,18 @@ export function useRealtimeAPI() {
     setIsConnected(false);
     setIsRecording(false);
     setTranscript("");
-  }, []);
+
+    // Process the accumulated transcript into a slide
+    if (finalTranscript && finalTranscript.trim().length > 10) {
+      console.log("🎯 Processing recorded slide idea:", finalTranscript);
+      const words = finalTranscript.split(/\s+/);
+      const title = words.slice(0, 6).join(" ");
+      await processIdea(title, finalTranscript, "concept");
+    }
+
+    // Reset the transcript ref for next recording
+    fullTranscriptRef.current = "";
+  }, [processIdea]);
 
   const clearPending = useCallback(() => {
     setPendingSlides([]);
@@ -239,6 +264,7 @@ export function useRealtimeAPI() {
     stop,
     clearPending,
     removeSlide,
+    addSlides,
     processFeedback,
   };
 }

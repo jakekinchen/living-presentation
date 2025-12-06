@@ -4,7 +4,8 @@
       "Bash(grep:*)",
       "Bash(cat:*)",
       "Bash(pnpm add:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []
