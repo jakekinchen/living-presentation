@@ -297,15 +297,25 @@ function PresenterView({ onExit }: { onExit: () => void }) {
     dismissFeedback(feedbackId);
   };
 
-  // Sync current slide to presentation window
+  // Sync current slide to presentation window and broadcast to all audience members
   useEffect(() => {
+    // Send to local presentation window via postMessage
     if (presentationWindow && !presentationWindow.closed) {
       presentationWindow.postMessage(
         { type: "UPDATE_SLIDE", slide: currentSlide },
         window.location.origin
       );
     }
-  }, [currentSlide, presentationWindow]);
+
+    // Broadcast to all audience members via API
+    if (sessionId) {
+      fetch(`/api/sessions/${sessionId}/slide`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slide: currentSlide }),
+      }).catch((err) => console.error("Failed to broadcast slide:", err));
+    }
+  }, [currentSlide, presentationWindow, sessionId]);
 
   // Keyboard navigation for previous slide
   useEffect(() => {

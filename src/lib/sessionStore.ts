@@ -1,8 +1,24 @@
 import { nanoid } from "nanoid";
 import { Session, Feedback } from "@/types/feedback";
 
+interface SlideData {
+  id: string;
+  imageUrl?: string;
+  headline?: string;
+  subheadline?: string;
+  bullets?: string[];
+  backgroundColor?: string;
+  originalIdea?: {
+    title: string;
+    content: string;
+    category: string;
+  };
+  timestamp?: string;
+}
+
 interface SessionData extends Session {
   feedback: Feedback[];
+  currentSlide: SlideData | null;
 }
 
 // In-memory store for sessions
@@ -34,6 +50,7 @@ export const sessionStore = {
       createdAt,
       expiresAt,
       feedback: [],
+      currentSlide: null,
     };
 
     sessions.set(id, session);
@@ -113,5 +130,40 @@ export const sessionStore = {
   deleteSession(sessionId: string): void {
     sessions.delete(sessionId);
     console.log(`🗑️ Deleted session: ${sessionId}`);
+  },
+
+  /**
+   * Updates the current slide for a session
+   * Returns true if successful, false if session not found
+   */
+  updateCurrentSlide(sessionId: string, slide: SlideData | null): boolean {
+    const session = sessions.get(sessionId);
+    if (!session) return false;
+
+    // Check if expired
+    if (session.expiresAt < new Date().toISOString()) {
+      sessions.delete(sessionId);
+      return false;
+    }
+
+    session.currentSlide = slide;
+    console.log(`📺 Updated current slide for session ${sessionId}`);
+    return true;
+  },
+
+  /**
+   * Gets the current slide for a session
+   */
+  getCurrentSlide(sessionId: string): SlideData | null {
+    const session = sessions.get(sessionId);
+    if (!session) return null;
+
+    // Check if expired
+    if (session.expiresAt < new Date().toISOString()) {
+      sessions.delete(sessionId);
+      return null;
+    }
+
+    return session.currentSlide;
   },
 };

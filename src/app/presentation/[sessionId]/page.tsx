@@ -42,7 +42,7 @@ export default function PresentationPage({
     validateSession();
   }, [sessionId]);
 
-  // Listen for slide updates via postMessage
+  // Listen for slide updates via postMessage (for presenter's own window)
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
@@ -55,6 +55,33 @@ export default function PresentationPage({
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, []);
+
+  // Poll for slide updates (for remote audience members)
+  useEffect(() => {
+    if (!sessionValid) return;
+
+    const pollSlides = async () => {
+      try {
+        const response = await fetch(`/api/sessions/${sessionId}/slide`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.slide) {
+            setSlide(data.slide);
+          }
+        }
+      } catch (error) {
+        console.error("Error polling for slides:", error);
+      }
+    };
+
+    // Poll immediately on mount
+    pollSlides();
+
+    // Then poll every 2 seconds
+    const interval = setInterval(pollSlides, 2000);
+
+    return () => clearInterval(interval);
+  }, [sessionId, sessionValid]);
 
   // Handle feedback submission
   const handleSubmitFeedback = async () => {
