@@ -2,16 +2,33 @@
 
 // Dynamically import pdfjs-dist only on client side
 let pdfjsLib: typeof import("pdfjs-dist") | null = null;
+let pdfJsInitialized = false;
 
 async function getPdfJs() {
   if (typeof window === "undefined") {
     throw new Error("PDF.js can only be used in the browser");
   }
   if (!pdfjsLib) {
+    console.log("Loading PDF.js...");
     pdfjsLib = await import("pdfjs-dist");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+    // Use the bundled worker or CDN fallback
+    if (!pdfJsInitialized) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+      pdfJsInitialized = true;
+      console.log("PDF.js worker configured:", pdfjsLib.GlobalWorkerOptions.workerSrc);
+    }
   }
   return pdfjsLib;
+}
+
+// Helper to add timeout to promises
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout: ${message}`)), ms)
+    ),
+  ]);
 }
 
 export interface ConvertedSlide {
@@ -110,41 +127,77 @@ export async function imageToDataUrl(file: File): Promise<ConvertedSlide> {
  * Convert a PDF file to an array of image data URLs (one per page)
  */
 export async function pdfToImages(file: File, scale: number = 2.0): Promise<ConvertedSlide[]> {
-  const pdfjs = await getPdfJs();
+  console.log("Starting PDF conversion for:", file.name);
+
+  const pdfjs = await withTimeout(
+    getPdfJs(),
+    10000,
+    "Loading PDF.js library"
+  );
+
+  console.log("PDF.js loaded, reading file...");
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+
+  console.log("Loading PDF document...");
+  const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+  const pdf = await withTimeout(
+    loadingTask.promise,
+    30000,
+    "Loading PDF document"
+  );
+
   const numPages = pdf.numPages;
+  console.log(`PDF loaded with ${numPages} pages`);
   const slides: ConvertedSlide[] = [];
 
   for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-    const page = await pdf.getPage(pageNum);
-    const viewport = page.getViewport({ scale });
+    console.log(`Processing page ${pageNum}/${numPages}...`);
 
-    // Create a canvas to render the page
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
-    if (!context) {
-      console.error("Could not get canvas context");
-      continue;
+    try {
+      const page = await withTimeout(
+        pdf.getPage(pageNum),
+        10000,
+        `Getting page ${pageNum}`
+      );
+
+      const viewport = page.getViewport({ scale });
+
+      // Create a canvas to render the page
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      if (!context) {
+        console.error("Could not get canvas context");
+        continue;
+      }
+
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+
+      await withTimeout(
+        page.render({
+          canvasContext: context,
+          viewport: viewport,
+          canvas: canvas,
+        }).promise,
+        30000,
+        `Rendering page ${pageNum}`
+      );
+
+      const dataUrl = canvas.toDataURL("image/png");
+      slides.push({
+        dataUrl,
+        fileName: `${file.name} - Page ${pageNum}`,
+        pageNumber: pageNum,
+      });
+
+      console.log(`Page ${pageNum} converted successfully`);
+    } catch (pageError) {
+      console.error(`Failed to convert page ${pageNum}:`, pageError);
+      // Continue with other pages
     }
-
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-
-    await page.render({
-      canvasContext: context,
-      viewport: viewport,
-      canvas: canvas,
-    }).promise;
-
-    const dataUrl = canvas.toDataURL("image/png");
-    slides.push({
-      dataUrl,
-      fileName: `${file.name} - Page ${pageNum}`,
-      pageNumber: pageNum,
-    });
   }
 
+  console.log(`PDF conversion complete: ${slides.length} slides`);
   return slides;
 }
 
@@ -252,18 +305,29 @@ export async function convertFilesToImages(
   onProgress?: (message: string, current: number, total: number) => void
 ): Promise<ConvertedSlide[]> {
   const allSlides: ConvertedSlide[] = [];
+  const errors: string[] = [];
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     onProgress?.(`Processing ${file.name}...`, i + 1, files.length);
 
     try {
-      const slides = await convertFileToImages(file);
+      const slides = await convertFileToImages(file, (msg) => {
+        onProgress?.(msg, i + 1, files.length);
+      });
       allSlides.push(...slides);
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
       console.error(`Failed to convert ${file.name}:`, error);
-      // Continue with other files
+      errors.push(`${file.name}: ${errorMsg}`);
+      // Show error but continue with other files
+      onProgress?.(`Error: ${errorMsg}`, i + 1, files.length);
     }
+  }
+
+  // If no slides were extracted but there were errors, throw
+  if (allSlides.length === 0 && errors.length > 0) {
+    throw new Error(`Failed to convert files: ${errors.join(", ")}`);
   }
 
   return allSlides;
