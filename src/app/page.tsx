@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRealtimeAPI, SlideData, PresentationMode, SlideOptions } from "@/hooks/useRealtimeAPI";
+import { useRealtimeAPI, SlideData } from "@/hooks/useRealtimeAPI";
+import { useFeedback } from "@/hooks/useFeedback";
 
 // Background color mapping
 const bgColors: Record<string, string> = {
@@ -294,6 +295,7 @@ function PresenterView({ onExit }: { onExit: () => void }) {
     autoAcceptedSlide,
     uploadedSlides,
     isUploadingSlides,
+    questionSlides,
     error,
     transcript,
     fullTranscript,
@@ -303,8 +305,8 @@ function PresenterView({ onExit }: { onExit: () => void }) {
     setMode,
     start,
     stop,
-    removeSlide,
     processFeedback,
+    removeQuestionSlide,
     removeSlideOption,
     clearAutoAcceptedSlide,
     recordAcceptedSlide,
@@ -331,12 +333,7 @@ function PresenterView({ onExit }: { onExit: () => void }) {
 
   const currentSlide = slideNav.index >= 0 ? slideNav.history[slideNav.index] : null;
 
-  // Separate pending slides by source
-  const voiceSlides = pendingSlides.filter((s) => s.source === "voice");
-  const questionSlides = pendingSlides.filter((s) => s.source === "question");
-
-  // Get the next pending slides
-  const nextVoiceSlide = voiceSlides[0] || null;
+  // Get the next question slide
   const nextQuestionSlide = questionSlides[0] || null;
 
   // Create session on component mount
@@ -461,6 +458,23 @@ function PresenterView({ onExit }: { onExit: () => void }) {
     removeSlideOption(slide.id);
   };
 
+  // Handle accepting a question slide
+  const acceptQuestionSlide = (slide: SlideData) => {
+    setSlideNav((prev) => {
+      const baseHistory =
+        prev.index >= 0 ? prev.history.slice(0, prev.index + 1) : [];
+      const history = [...baseHistory, slide];
+      return { history, index: history.length - 1 };
+    });
+    recordAcceptedSlide(slide);
+    removeQuestionSlide(slide.id);
+  };
+
+  // Skip a question slide
+  const skipQuestionSlide = (slide: SlideData) => {
+    removeQuestionSlide(slide.id);
+  };
+
   // Handle file upload
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -473,6 +487,7 @@ function PresenterView({ onExit }: { onExit: () => void }) {
 
   // Accept an uploaded slide
   const acceptUploadedSlide = (slideId: string) => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     const slide = useUploadedSlide(slideId);
     if (slide) {
       setSlideNav((prev) => {
@@ -561,8 +576,17 @@ function PresenterView({ onExit }: { onExit: () => void }) {
           <div className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900/50 px-4 py-2">
             <span className="text-sm text-zinc-500">Share with audience:</span>
             <code className="flex-1 text-sm text-zinc-300">{audienceUrl}</code>
+            <button
+              onClick={copyAudienceUrl}
+              className="rounded bg-zinc-700 px-3 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-600"
+            >
+              Copy
+            </button>
+          </div>
+        )}
+
+        {/* Mode Toggle */}
         <div className="flex items-center gap-3">
-          {/* Mode Toggle */}
           <div className="flex items-center gap-2 rounded-lg border border-zinc-700 p-1">
             <button
               onClick={() => setMode("gated")}
@@ -588,19 +612,12 @@ function PresenterView({ onExit }: { onExit: () => void }) {
 
           <button
             onClick={openPresentationWindow}
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
+            disabled={!sessionId}
+            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Open Presentation Window
           </button>
-          {!isRecording && !isConnected && (
-            <button
-              onClick={copyAudienceUrl}
-              className="rounded bg-zinc-700 px-3 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-600"
-            >
-              Copy
-            </button>
-          </div>
-        )}
+        </div>
       </header>
 
       {/* Error */}
@@ -620,35 +637,10 @@ function PresenterView({ onExit }: { onExit: () => void }) {
           </div>
         </div>
 
-        {/* Right side: next slides + transcript */}
-        <div className="flex w-80 flex-col gap-6">
-          {/* Next Voice Slide */}
-          <div>
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-zinc-500">
-                NEXT VOICE SLIDE {voiceSlides.length > 1 && `(${voiceSlides.length} queued)`}
-              </span>
-            </div>
-
-            {nextVoiceSlide ? (
-              <NextSlidePreview
-                slide={nextVoiceSlide}
-                onAccept={() => acceptSlide(nextVoiceSlide)}
-                onSkip={() => skipSlide(nextVoiceSlide.id)}
-              />
-            ) : (
-              <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed border-zinc-800 text-zinc-600">
-                {isRecording ? (
-                  <div className="text-center">
-                    <div className="mb-2 animate-pulse text-2xl">...</div>
-                    <p className="text-sm">Listening for ideas</p>
-                  </div>
-                ) : (
-                  <p className="text-sm">Start recording to capture slides</p>
-                )}
-              </div>
+        {/* Right side: slide options + transcript */}
+        <div className="flex w-96 flex-col gap-4">
           {/* Upload slides button */}
-          <div className="mt-3 flex items-center gap-3">
+          <div className="flex items-center gap-3">
             <input
               ref={fileInputRef}
               type="file"
@@ -671,10 +663,7 @@ function PresenterView({ onExit }: { onExit: () => void }) {
               </span>
             )}
           </div>
-        </div>
 
-        {/* Right side: slide options + transcript */}
-        <div className="flex w-96 flex-col gap-4">
           {/* Slide options - only in gated mode */}
           {mode === "gated" ? (
             <>
@@ -811,26 +800,25 @@ function PresenterView({ onExit }: { onExit: () => void }) {
             </div>
           )}
 
-          {/* Next Question Slide */}
-          <div>
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-zinc-500">
-                NEXT QUESTION SLIDE {questionSlides.length > 1 && `(${questionSlides.length} queued)`}
-              </span>
-            </div>
-
-            {nextQuestionSlide ? (
-              <NextSlidePreview
-                slide={nextQuestionSlide}
-                onAccept={() => acceptSlide(nextQuestionSlide)}
-                onSkip={() => skipSlide(nextQuestionSlide.id)}
-              />
-            ) : (
-              <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed border-zinc-800 text-zinc-600">
-                <p className="text-sm">No question slides yet</p>
+          {/* Audience Question Slides */}
+          {questionSlides.length > 0 && (
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-sm font-medium text-zinc-500">
+                  AUDIENCE QUESTIONS {questionSlides.length > 1 && `(${questionSlides.length})`}
+                </span>
               </div>
-            )}
-          </div>
+
+              {nextQuestionSlide && (
+                <SlideOptionPreview
+                  slide={nextQuestionSlide}
+                  onAccept={acceptQuestionSlide}
+                  onSkip={skipQuestionSlide}
+                  label="Next Question"
+                />
+              )}
+            </div>
+          )}
 
           {/* Live transcript */}
           <div className="flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">

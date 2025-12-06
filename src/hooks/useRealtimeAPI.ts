@@ -60,6 +60,7 @@ export function useRealtimeAPI() {
   const [autoAcceptedSlide, setAutoAcceptedSlide] = useState<SlideData | null>(null);
   const [uploadedSlides, setUploadedSlides] = useState<SlideData[]>([]);
   const [isUploadingSlides, setIsUploadingSlides] = useState(false);
+  const [questionSlides, setQuestionSlides] = useState<SlideData[]>([]);
 
   type DeepgramLiveConnection = ReturnType<
     ReturnType<typeof createClient>["listen"]["live"]
@@ -260,11 +261,9 @@ export function useRealtimeAPI() {
           const data = await response.json();
           console.log("✅ Gemini response:", data);
           if (data.slide) {
-            // Mark slide as voice-generated
+            // Mark slide as voice-generated and auto-accept in stream mode
             const slideWithSource = { ...data.slide, source: "voice" as const };
-            setPendingSlides((prev) => [...prev, slideWithSource]);
-            // In stream mode, auto-accept the slide directly
-            setAutoAcceptedSlide(data.slide);
+            setAutoAcceptedSlide(slideWithSource);
           }
         } else {
           console.error("❌ Gemini API error:", await response.text());
@@ -544,7 +543,7 @@ export function useRealtimeAPI() {
         };
 
         console.log("✅ Created question slide template:", questionSlide);
-        setPendingSlides((prev) => [...prev, questionSlide]);
+        setQuestionSlides((prev) => [...prev, questionSlide]);
       } catch (err) {
         console.error("❌ Failed to generate Q&A slide:", err);
       } finally {
@@ -554,6 +553,11 @@ export function useRealtimeAPI() {
     []
   );
 
+  // Remove a question slide (when accepted or skipped)
+  const removeQuestionSlide = useCallback((id: string) => {
+    setQuestionSlides((prev) => prev.filter((slide) => slide.id !== id));
+  }, []);
+
   return {
     isConnected,
     isRecording,
@@ -562,6 +566,7 @@ export function useRealtimeAPI() {
     autoAcceptedSlide,
     uploadedSlides,
     isUploadingSlides,
+    questionSlides,
     error,
     transcript,
     fullTranscript,
@@ -571,9 +576,8 @@ export function useRealtimeAPI() {
     setMode,
     start,
     stop,
-    clearPending,
-    removeSlide,
     processFeedback,
+    removeQuestionSlide,
     clearSlideOptions,
     clearAutoAcceptedSlide,
     removeSlideOption,
