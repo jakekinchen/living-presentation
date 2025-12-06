@@ -20,6 +20,7 @@ export interface SlideData {
     category: string;
   };
   timestamp: string;
+  source?: "voice" | "question"; // Track where the slide came from
 }
 
 export function useRealtimeAPI() {
@@ -55,7 +56,9 @@ export function useRealtimeAPI() {
           const data = await response.json();
           console.log("✅ Gemini response:", data);
           if (data.slide) {
-            setPendingSlides((prev) => [...prev, data.slide]);
+            // Mark slide as voice-generated
+            const slideWithSource = { ...data.slide, source: "voice" as const };
+            setPendingSlides((prev) => [...prev, slideWithSource]);
           }
         } else {
           console.error("❌ Gemini API error:", await response.text());
@@ -214,7 +217,9 @@ export function useRealtimeAPI() {
           const data = await response.json();
           console.log("✅ Gemini Q&A response:", data);
           if (data.slide) {
-            setPendingSlides((prev) => [...prev, data.slide]);
+            // Mark slide as question-generated
+            const slideWithSource = { ...data.slide, source: "question" as const };
+            setPendingSlides((prev) => [...prev, slideWithSource]);
           }
         } else {
           console.error("❌ Gemini API error:", await response.text());

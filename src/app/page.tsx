@@ -245,8 +245,13 @@ function PresenterView({ onExit }: { onExit: () => void }) {
 
   const currentSlide = slideNav.index >= 0 ? slideNav.history[slideNav.index] : null;
 
-  // Get the next pending slide (first in queue)
-  const nextSlide = pendingSlides[0] || null;
+  // Separate pending slides by source
+  const voiceSlides = pendingSlides.filter((s) => s.source === "voice");
+  const questionSlides = pendingSlides.filter((s) => s.source === "question");
+
+  // Get the next pending slides
+  const nextVoiceSlide = voiceSlides[0] || null;
+  const nextQuestionSlide = questionSlides[0] || null;
 
   // Create session on component mount
   useEffect(() => {
@@ -334,23 +339,19 @@ function PresenterView({ onExit }: { onExit: () => void }) {
   }, []);
 
   // Handle accepting a slide
-  const acceptSlide = () => {
-    if (nextSlide) {
-      setSlideNav((prev) => {
-        const baseHistory =
-          prev.index >= 0 ? prev.history.slice(0, prev.index + 1) : [];
-        const history = [...baseHistory, nextSlide];
-        return { history, index: history.length - 1 };
-      });
-      removeSlide(nextSlide.id);
-    }
+  const acceptSlide = (slide: SlideData) => {
+    setSlideNav((prev) => {
+      const baseHistory =
+        prev.index >= 0 ? prev.history.slice(0, prev.index + 1) : [];
+      const history = [...baseHistory, slide];
+      return { history, index: history.length - 1 };
+    });
+    removeSlide(slide.id);
   };
 
   // Skip current pending slide
-  const skipSlide = () => {
-    if (nextSlide) {
-      removeSlide(nextSlide.id);
-    }
+  const skipSlide = (slideId: string) => {
+    removeSlide(slideId);
   };
 
   const handleExit = () => {
@@ -456,21 +457,21 @@ function PresenterView({ onExit }: { onExit: () => void }) {
           </div>
         </div>
 
-        {/* Right side: next slide + transcript */}
+        {/* Right side: next slides + transcript */}
         <div className="flex w-80 flex-col gap-6">
-          {/* Next slide */}
+          {/* Next Voice Slide */}
           <div>
             <div className="mb-3 flex items-center justify-between">
               <span className="text-sm font-medium text-zinc-500">
-                NEXT SLIDE {pendingSlides.length > 1 && `(${pendingSlides.length} queued)`}
+                NEXT VOICE SLIDE {voiceSlides.length > 1 && `(${voiceSlides.length} queued)`}
               </span>
             </div>
 
-            {nextSlide ? (
+            {nextVoiceSlide ? (
               <NextSlidePreview
-                slide={nextSlide}
-                onAccept={acceptSlide}
-                onSkip={skipSlide}
+                slide={nextVoiceSlide}
+                onAccept={() => acceptSlide(nextVoiceSlide)}
+                onSkip={() => skipSlide(nextVoiceSlide.id)}
               />
             ) : (
               <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed border-zinc-800 text-zinc-600">
@@ -482,6 +483,27 @@ function PresenterView({ onExit }: { onExit: () => void }) {
                 ) : (
                   <p className="text-sm">Start recording to capture slides</p>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Next Question Slide */}
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-zinc-500">
+                NEXT QUESTION SLIDE {questionSlides.length > 1 && `(${questionSlides.length} queued)`}
+              </span>
+            </div>
+
+            {nextQuestionSlide ? (
+              <NextSlidePreview
+                slide={nextQuestionSlide}
+                onAccept={() => acceptSlide(nextQuestionSlide)}
+                onSkip={() => skipSlide(nextQuestionSlide.id)}
+              />
+            ) : (
+              <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed border-zinc-800 text-zinc-600">
+                <p className="text-sm">No question slides yet</p>
               </div>
             )}
           </div>
