@@ -12,6 +12,7 @@
     "@deepgram/sdk": "^4.11.2",
     "@google/generative-ai": "^0.21.0",
     "cross-fetch": "^4.1.0",
+    "nanoid": "^5.1.6",
     "next": "16.0.7",
     "react": "19.2.0",
     "react-dom": "19.2.0"

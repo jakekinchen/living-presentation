@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRealtimeAPI, SlideData } from "@/hooks/useRealtimeAPI";
+import { useFeedback } from "@/hooks/useFeedback";
 
 // Background color mapping
 const bgColors: Record<string, string> = {
@@ -225,6 +226,7 @@ function PresenterView({ onExit }: { onExit: () => void }) {
     start,
     stop,
     removeSlide,
+    processFeedback,
   } = useRealtimeAPI();
 
   const [slideNav, setSlideNav] = useState<{
@@ -235,20 +237,64 @@ function PresenterView({ onExit }: { onExit: () => void }) {
     index: -1,
   });
   const [presentationWindow, setPresentationWindow] = useState<Window | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [audienceUrl, setAudienceUrl] = useState<string | null>(null);
+  const [creatingSession, setCreatingSession] = useState(false);
+
+  const { feedback, unreadCount, dismissFeedback } = useFeedback(sessionId);
 
   const currentSlide = slideNav.index >= 0 ? slideNav.history[slideNav.index] : null;
 
   // Get the next pending slide (first in queue)
   const nextSlide = pendingSlides[0] || null;
 
+  // Create session on component mount
+  useEffect(() => {
+    async function createSession() {
+      setCreatingSession(true);
+      try {
+        const response = await fetch("/api/sessions/create", {
+          method: "POST",
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setSessionId(data.sessionId);
+          setAudienceUrl(`${window.location.origin}${data.audienceUrl}`);
+          console.log("✅ Session created:", data.sessionId);
+        } else {
+          console.error("❌ Failed to create session");
+        }
+      } catch (err) {
+        console.error("❌ Error creating session:", err);
+      } finally {
+        setCreatingSession(false);
+      }
+    }
+    createSession();
+  }, []);
+
   // Open presentation window
   const openPresentationWindow = () => {
+    if (!sessionId) return;
     const win = window.open(
-      "/presentation",
+      `/presentation/${sessionId}`,
       "presentation",
       "width=1920,height=1080,menubar=no,toolbar=no,location=no,status=no"
     );
     setPresentationWindow(win);
+  };
+
+  // Copy audience URL to clipboard
+  const copyAudienceUrl = () => {
+    if (audienceUrl) {
+      navigator.clipboard.writeText(audienceUrl);
+    }
+  };
+
+  // Handle generating slide from feedback
+  const handleGenerateSlide = async (feedbackId: string, questionText: string) => {
+    await processFeedback(feedbackId, questionText);
+    dismissFeedback(feedbackId);
   };
 
   // Sync current slide to presentation window
@@ -308,62 +354,79 @@ function PresenterView({ onExit }: { onExit: () => void }) {
   return (
     <div className="flex min-h-screen flex-col bg-zinc-950">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-3">
-        <div className="flex items-center gap-4">
-          <h1 className="text-lg font-semibold text-white">Presenter Controls</h1>
-          <div className="flex items-center gap-2">
-            {isRecording ? (
-              <span className="flex items-center gap-2 rounded-full bg-red-500/20 px-3 py-1 text-sm text-red-400">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-                Live
-              </span>
-            ) : isConnected ? (
-              <span className="rounded-full bg-green-500/20 px-3 py-1 text-sm text-green-400">
-                Connected
-              </span>
-            ) : (
-              <span className="rounded-full bg-zinc-700 px-3 py-1 text-sm text-zinc-400">
-                Ready
-              </span>
+      <header className="flex flex-col gap-3 border-b border-zinc-800 px-6 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h1 className="text-lg font-semibold text-white">Presenter Controls</h1>
+            <div className="flex items-center gap-2">
+              {isRecording ? (
+                <span className="flex items-center gap-2 rounded-full bg-red-500/20 px-3 py-1 text-sm text-red-400">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+                  Live
+                </span>
+              ) : isConnected ? (
+                <span className="rounded-full bg-green-500/20 px-3 py-1 text-sm text-green-400">
+                  Connected
+                </span>
+              ) : (
+                <span className="rounded-full bg-zinc-700 px-3 py-1 text-sm text-zinc-400">
+                  Ready
+                </span>
+              )}
+              {isProcessing && (
+                <span className="rounded-full bg-blue-500/20 px-3 py-1 text-sm text-blue-400">
+                  Generating...
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={openPresentationWindow}
+              disabled={!sessionId}
+              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Open Presentation Window
+            </button>
+            {!isRecording && !isConnected && (
+              <button
+                onClick={start}
+                className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+              >
+                Start Recording
+              </button>
             )}
-            {isProcessing && (
-              <span className="rounded-full bg-blue-500/20 px-3 py-1 text-sm text-blue-400">
-                Generating...
-              </span>
+            {isRecording && (
+              <button
+                onClick={stop}
+                className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600"
+              >
+                Stop
+              </button>
             )}
+            <button
+              onClick={handleExit}
+              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+            >
+              Exit
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={openPresentationWindow}
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
-          >
-            Open Presentation Window
-          </button>
-          {!isRecording && !isConnected && (
+        {/* Audience URL Section */}
+        {audienceUrl && (
+          <div className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900/50 px-4 py-2">
+            <span className="text-sm text-zinc-500">Share with audience:</span>
+            <code className="flex-1 text-sm text-zinc-300">{audienceUrl}</code>
             <button
-              onClick={start}
-              className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+              onClick={copyAudienceUrl}
+              className="rounded bg-zinc-700 px-3 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-600"
             >
-              Start Recording
+              Copy
             </button>
-          )}
-          {isRecording && (
-            <button
-              onClick={stop}
-              className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600"
-            >
-              Stop
-            </button>
-          )}
-          <button
-            onClick={handleExit}
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
-          >
-            Exit
-          </button>
-        </div>
+          </div>
+        )}
       </header>
 
       {/* Error */}
@@ -414,7 +477,7 @@ function PresenterView({ onExit }: { onExit: () => void }) {
           </div>
 
           {/* Live transcript */}
-          <div className="flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">
+          <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">
             <div className="border-b border-zinc-800 px-4 py-2">
               <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
                 Live Transcript
@@ -427,6 +490,58 @@ function PresenterView({ onExit }: { onExit: () => void }) {
                 <p className="text-sm italic text-zinc-700">
                   {isRecording ? "Waiting for speech..." : ""}
                 </p>
+              )}
+            </div>
+          </div>
+
+          {/* Audience Questions */}
+          <div className="flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">
+            <div className="border-b border-zinc-800 px-4 py-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
+                  Audience Questions
+                </span>
+                {unreadCount > 0 && (
+                  <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs font-semibold text-white">
+                    {unreadCount}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="max-h-64 overflow-y-auto p-4">
+              {feedback.length === 0 ? (
+                <p className="text-sm italic text-zinc-700">
+                  No questions yet. Share the audience URL above.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {feedback.map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-3"
+                    >
+                      <p className="mb-2 text-sm text-zinc-300">{item.text}</p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleGenerateSlide(item.id, item.text)}
+                          disabled={isProcessing}
+                          className="rounded bg-white px-3 py-1 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Generate Slide
+                        </button>
+                        <button
+                          onClick={() => dismissFeedback(item.id)}
+                          className="rounded border border-zinc-600 px-3 py-1 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
+                        >
+                          Dismiss
+                        </button>
+                        <span className="ml-auto text-xs text-zinc-600">
+                          {new Date(item.timestamp).toLocaleTimeString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>

@@ -193,6 +193,41 @@ export function useRealtimeAPI() {
     setPendingSlides([]);
   }, []);
 
+  const processFeedback = useCallback(
+    async (feedbackId: string, questionText: string) => {
+      console.log("🎯 Processing feedback:", { feedbackId, questionText });
+      setIsProcessing(true);
+
+      try {
+        // Generate a Q&A slide: Question (bold) + AI-generated answer
+        const response = await fetch("/api/gemini", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: questionText,
+            content: `Generate a clear, concise answer to this question: ${questionText}`,
+            category: "question",
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log("✅ Gemini Q&A response:", data);
+          if (data.slide) {
+            setPendingSlides((prev) => [...prev, data.slide]);
+          }
+        } else {
+          console.error("❌ Gemini API error:", await response.text());
+        }
+      } catch (err) {
+        console.error("❌ Failed to generate Q&A slide:", err);
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    []
+  );
+
   return {
     isConnected,
     isRecording,
@@ -204,5 +239,6 @@ export function useRealtimeAPI() {
     stop,
     clearPending,
     removeSlide,
+    processFeedback,
   };
 }
