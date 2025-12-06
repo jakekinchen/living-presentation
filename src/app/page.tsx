@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRealtimeAPI, SlideData } from "@/hooks/useRealtimeAPI";
+import { useRealtimeAPI, SlideData, PresentationMode, SlideOptions } from "@/hooks/useRealtimeAPI";
 
 // Background color mapping
 const bgColors: Record<string, string> = {
@@ -103,20 +103,23 @@ function SlideCanvas({ slide, isFullscreen = false }: { slide: SlideData | null;
   );
 }
 
-// Next slide preview
-function NextSlidePreview({
+// Slide option preview (compact version for 2-option display)
+function SlideOptionPreview({
   slide,
   onAccept,
   onSkip,
+  label,
 }: {
   slide: SlideData;
-  onAccept: () => void;
-  onSkip: () => void;
+  onAccept: (slide: SlideData) => void;
+  onSkip: (slide: SlideData) => void;
+  label: string;
 }) {
   if (slide.imageUrl) {
     return (
-      <div className="flex flex-col gap-3">
-        <div className="aspect-video overflow-hidden rounded-xl border border-zinc-700 bg-black">
+      <div className="flex flex-col gap-2">
+        <div className="text-xs font-medium text-zinc-500">{label}</div>
+        <div className="aspect-video overflow-hidden rounded-lg border border-zinc-700 bg-black">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={slide.imageUrl}
@@ -124,16 +127,16 @@ function NextSlidePreview({
             className="h-full w-full object-contain"
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-1">
           <button
-            onClick={onAccept}
-            className="flex-1 rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+            onClick={() => onAccept(slide)}
+            className="flex-1 rounded-md bg-white px-2 py-1.5 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
           >
-            Use This Slide
+            Use
           </button>
           <button
-            onClick={onSkip}
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+            onClick={() => onSkip(slide)}
+            className="rounded-md border border-zinc-700 px-2 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
           >
             Skip
           </button>
@@ -147,32 +150,33 @@ function NextSlidePreview({
   const isLight = isLightColor(slide.backgroundColor || "zinc");
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
+      <div className="text-xs font-medium text-zinc-500">{label}</div>
       <div
-        className={`aspect-video overflow-hidden rounded-xl border border-zinc-700 ${bgClass}`}
+        className={`aspect-video overflow-hidden rounded-lg border border-zinc-700 ${bgClass}`}
         style={bgStyle}
       >
-        <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-          <h3 className={`text-lg font-bold leading-tight ${isLight ? "text-zinc-900" : "text-white"}`}>
+        <div className="flex h-full flex-col items-center justify-center p-4 text-center">
+          <h3 className={`text-sm font-bold leading-tight ${isLight ? "text-zinc-900" : "text-white"}`}>
             {slide.headline}
           </h3>
           {slide.subheadline && (
-            <p className={`mt-2 text-sm ${isLight ? "text-zinc-600" : "text-zinc-400"}`}>
+            <p className={`mt-1 text-xs ${isLight ? "text-zinc-600" : "text-zinc-400"}`}>
               {slide.subheadline}
             </p>
           )}
         </div>
       </div>
-      <div className="flex gap-2">
+      <div className="flex gap-1">
         <button
-          onClick={onAccept}
-          className="flex-1 rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+          onClick={() => onAccept(slide)}
+          className="flex-1 rounded-md bg-white px-2 py-1.5 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
         >
-          Use This Slide
+          Use
         </button>
         <button
-          onClick={onSkip}
-          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+          onClick={() => onSkip(slide)}
+          className="rounded-md border border-zinc-700 px-2 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
         >
           Skip
         </button>
@@ -219,12 +223,20 @@ function PresenterView({ onExit }: { onExit: () => void }) {
     isConnected,
     isRecording,
     isProcessing,
-    pendingSlides,
+    slideOptions,
+    autoAcceptedSlide,
     error,
     transcript,
+    fullTranscript,
+    gateStatus,
+    curatorStatus,
+    mode,
+    setMode,
     start,
     stop,
-    removeSlide,
+    removeSlideOption,
+    clearAutoAcceptedSlide,
+    recordAcceptedSlide,
   } = useRealtimeAPI();
 
   const [slideNav, setSlideNav] = useState<{
@@ -237,9 +249,6 @@ function PresenterView({ onExit }: { onExit: () => void }) {
   const [presentationWindow, setPresentationWindow] = useState<Window | null>(null);
 
   const currentSlide = slideNav.index >= 0 ? slideNav.history[slideNav.index] : null;
-
-  // Get the next pending slide (first in queue)
-  const nextSlide = pendingSlides[0] || null;
 
   // Open presentation window
   const openPresentationWindow = () => {
@@ -261,7 +270,21 @@ function PresenterView({ onExit }: { onExit: () => void }) {
     }
   }, [currentSlide, presentationWindow]);
 
-  // Keyboard navigation for previous slide
+  // Auto-accept slides in stream mode
+  useEffect(() => {
+    if (autoAcceptedSlide) {
+      setSlideNav((prev) => {
+        const baseHistory =
+          prev.index >= 0 ? prev.history.slice(0, prev.index + 1) : [];
+        const history = [...baseHistory, autoAcceptedSlide];
+        return { history, index: history.length - 1 };
+      });
+      recordAcceptedSlide(autoAcceptedSlide);
+      clearAutoAcceptedSlide();
+    }
+  }, [autoAcceptedSlide, clearAutoAcceptedSlide, recordAcceptedSlide]);
+
+  // Keyboard navigation for slides
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "ArrowLeft") {
@@ -270,6 +293,12 @@ function PresenterView({ onExit }: { onExit: () => void }) {
           if (prev.index <= 0) return prev;
           return { ...prev, index: prev.index - 1 };
         });
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setSlideNav((prev) => {
+          if (prev.index >= prev.history.length - 1) return prev;
+          return { ...prev, index: prev.index + 1 };
+        });
       }
     };
 
@@ -277,24 +306,21 @@ function PresenterView({ onExit }: { onExit: () => void }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Handle accepting a slide
-  const acceptSlide = () => {
-    if (nextSlide) {
-      setSlideNav((prev) => {
-        const baseHistory =
-          prev.index >= 0 ? prev.history.slice(0, prev.index + 1) : [];
-        const history = [...baseHistory, nextSlide];
-        return { history, index: history.length - 1 };
-      });
-      removeSlide(nextSlide.id);
-    }
+  // Handle accepting a slide option
+  const acceptSlide = (slide: SlideData) => {
+    setSlideNav((prev) => {
+      const baseHistory =
+        prev.index >= 0 ? prev.history.slice(0, prev.index + 1) : [];
+      const history = [...baseHistory, slide];
+      return { history, index: history.length - 1 };
+    });
+    recordAcceptedSlide(slide);
+    removeSlideOption(slide.id);
   };
 
-  // Skip current pending slide
-  const skipSlide = () => {
-    if (nextSlide) {
-      removeSlide(nextSlide.id);
-    }
+  // Skip a slide option
+  const skipSlide = (slide: SlideData) => {
+    removeSlideOption(slide.id);
   };
 
   const handleExit = () => {
@@ -335,6 +361,30 @@ function PresenterView({ onExit }: { onExit: () => void }) {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Mode Toggle */}
+          <div className="flex items-center gap-2 rounded-lg border border-zinc-700 p-1">
+            <button
+              onClick={() => setMode("gated")}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                mode === "gated"
+                  ? "bg-zinc-700 text-white"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              Gated
+            </button>
+            <button
+              onClick={() => setMode("stream-of-consciousness")}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                mode === "stream-of-consciousness"
+                  ? "bg-zinc-700 text-white"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              Stream
+            </button>
+          </div>
+
           <button
             onClick={openPresentationWindow}
             className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
@@ -383,50 +433,117 @@ function PresenterView({ onExit }: { onExit: () => void }) {
           </div>
         </div>
 
-        {/* Right side: next slide + transcript */}
-        <div className="flex w-80 flex-col gap-6">
-          {/* Next slide */}
-          <div>
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-zinc-500">
-                NEXT SLIDE {pendingSlides.length > 1 && `(${pendingSlides.length} queued)`}
-              </span>
-            </div>
-
-            {nextSlide ? (
-              <NextSlidePreview
-                slide={nextSlide}
-                onAccept={acceptSlide}
-                onSkip={skipSlide}
-              />
-            ) : (
-              <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed border-zinc-800 text-zinc-600">
-                {isRecording ? (
-                  <div className="text-center">
-                    <div className="mb-2 animate-pulse text-2xl">...</div>
-                    <p className="text-sm">Listening for ideas</p>
-                  </div>
-                ) : (
-                  <p className="text-sm">Start recording to capture slides</p>
+        {/* Right side: slide options + transcript */}
+        <div className="flex w-96 flex-col gap-4">
+          {/* Slide options - only in gated mode */}
+          {mode === "gated" ? (
+            <>
+              {/* Slide options header */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-zinc-500">SLIDE OPTIONS</span>
+                {curatorStatus && (
+                  <span className="text-xs text-purple-400">{curatorStatus}</span>
                 )}
               </div>
-            )}
-          </div>
+
+              {/* Two slide options */}
+              <div className="grid grid-cols-2 gap-3">
+                {slideOptions[0] ? (
+                  <SlideOptionPreview
+                    slide={slideOptions[0]}
+                    onAccept={acceptSlide}
+                    onSkip={skipSlide}
+                    label="Option 1"
+                  />
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <div className="text-xs font-medium text-zinc-500">Option 1</div>
+                    <div className="flex aspect-video items-center justify-center rounded-lg border border-dashed border-zinc-800 text-zinc-600">
+                      <p className="text-xs text-center px-2">
+                        {isProcessing ? "Generating..." : isRecording ? "Listening..." : "Empty"}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {slideOptions[1] ? (
+                  <SlideOptionPreview
+                    slide={slideOptions[1]}
+                    onAccept={acceptSlide}
+                    onSkip={skipSlide}
+                    label="Option 2"
+                  />
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <div className="text-xs font-medium text-zinc-500">Option 2</div>
+                    <div className="flex aspect-video items-center justify-center rounded-lg border border-dashed border-zinc-800 text-zinc-600">
+                      <p className="text-xs text-center px-2">
+                        {isProcessing ? "Generating..." : isRecording ? "Listening..." : "Empty"}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            /* Stream mode - show status instead of options */
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+              <div className="text-sm font-medium text-zinc-500 mb-2">STREAM MODE</div>
+              <div className="flex items-center gap-2">
+                {isProcessing ? (
+                  <>
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+                    <span className="text-sm text-blue-400">Generating slide...</span>
+                  </>
+                ) : isRecording ? (
+                  <>
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
+                    <span className="text-sm text-green-400">Listening...</span>
+                  </>
+                ) : (
+                  <span className="text-sm text-zinc-600">Slides auto-display as you speak</span>
+                )}
+              </div>
+              <p className="mt-2 text-xs text-zinc-600">
+                {slideNav.history.length} slide{slideNav.history.length !== 1 ? "s" : ""} generated
+              </p>
+            </div>
+          )}
 
           {/* Live transcript */}
           <div className="flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">
-            <div className="border-b border-zinc-800 px-4 py-2">
+            <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
               <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
-                Live Transcript
+                {mode === "gated" ? "Accumulated Transcript" : "Live Transcript"}
               </span>
+              {mode === "gated" && gateStatus && (
+                <span className="text-xs text-blue-400">{gateStatus}</span>
+              )}
             </div>
-            <div className="p-4">
-              {transcript ? (
-                <p className="text-sm text-zinc-400">{transcript}</p>
+            <div className="max-h-48 overflow-y-auto p-4">
+              {mode === "gated" ? (
+                <>
+                  {fullTranscript ? (
+                    <p className="text-sm text-zinc-400">{fullTranscript}</p>
+                  ) : (
+                    <p className="text-sm italic text-zinc-700">
+                      {isRecording ? "Waiting for speech..." : ""}
+                    </p>
+                  )}
+                  {transcript && transcript !== fullTranscript && (
+                    <p className="mt-2 text-sm text-zinc-500 italic">{transcript}</p>
+                  )}
+                </>
               ) : (
-                <p className="text-sm italic text-zinc-700">
-                  {isRecording ? "Waiting for speech..." : ""}
-                </p>
+                <>
+                  {transcript ? (
+                    <p className="text-sm text-zinc-400">{transcript}</p>
+                  ) : (
+                    <p className="text-sm italic text-zinc-700">
+                      {isRecording ? "Waiting for speech..." : ""}
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </div>
