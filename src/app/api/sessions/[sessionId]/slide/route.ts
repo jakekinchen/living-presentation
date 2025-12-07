@@ -61,7 +61,14 @@ export async function GET(
     const slideData = sessionStore.getCurrentSlide(sessionId);
 
     // Return with default values if slideData is null (shouldn't happen if session was validated)
-    return NextResponse.json(slideData ?? { slide: null, showQRCode: false, audienceUrl: null });
+    return NextResponse.json(
+      slideData ?? { slide: null, showQRCode: false, audienceUrl: null },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   } catch (error) {
     console.error("❌ Error getting slide:", error);
     return NextResponse.json(

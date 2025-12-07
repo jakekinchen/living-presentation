@@ -38,6 +38,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
   } = useRealtimeAPI();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const processedFeedbackIdsRef = useRef<Set<string>>(new Set());
 
   // Session management
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -90,29 +91,30 @@ export function PresenterView({ onExit }: PresenterViewProps) {
   useEffect(() => {
     if (feedback.length > 0) {
       const latestFeedback = feedback[0];
-      // Check if it's already in the audience queue to avoid duplicates
-      const audienceChannelState = getChannelInfo("audience");
-      const alreadyInQueue = audienceChannelState.total > 0 &&
-        getChannelSlide("audience")?.id === `audience-${latestFeedback.id}`;
-      if (!alreadyInQueue) {
-        (async () => {
-          const result = await addToAudienceChannel(
-            latestFeedback.text,
-            latestFeedback.id
-          );
-          if (result.accepted) {
-            dismissFeedback(latestFeedback.id);
-          } else {
-            // Question was rejected by the gate; keep it visible but mark as read
-            console.log(
-              "Audience question rejected by gate:",
-              result.reason || "No reason provided"
-            );
-          }
-        })();
+      // Check if we've already processed this feedback ID
+      if (processedFeedbackIdsRef.current.has(latestFeedback.id)) {
+        return;
       }
+      // Mark as processed immediately to prevent duplicate processing
+      processedFeedbackIdsRef.current.add(latestFeedback.id);
+
+      (async () => {
+        const result = await addToAudienceChannel(
+          latestFeedback.text,
+          latestFeedback.id
+        );
+        if (result.accepted) {
+          dismissFeedback(latestFeedback.id);
+        } else {
+          // Question was rejected by the gate; keep it visible but mark as read
+          console.log(
+            "Audience question rejected by gate:",
+            result.reason || "No reason provided"
+          );
+        }
+      })();
     }
-  }, [feedback, getChannelInfo, getChannelSlide, addToAudienceChannel, dismissFeedback]);
+  }, [feedback, addToAudienceChannel, dismissFeedback]);
 
   // Open presentation window
   const openPresentationWindow = () => {

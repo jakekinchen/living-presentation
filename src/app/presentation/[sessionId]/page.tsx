@@ -1,17 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { use } from "react";
+import { useParams } from "next/navigation";
 import { SlideCanvas } from "@/components/presentation/SlideCanvas";
 import type { SlideData } from "@/hooks/useRealtimeAPI";
 import QRCode from "react-qr-code";
 
-export default function PresentationPage({
-  params,
-}: {
-  params: Promise<{ sessionId: string }>;
-}) {
-  const { sessionId } = use(params);
+export default function PresentationPage() {
+  const { sessionId } = useParams<{ sessionId: string }>();
   const [slide, setSlide] = useState<SlideData | null>(null);
   const [sessionValid, setSessionValid] = useState<boolean | null>(null);
   const [showQRCode, setShowQRCode] = useState(false);
@@ -25,11 +21,11 @@ export default function PresentationPage({
   useEffect(() => {
     async function validateSession() {
       try {
-        // We'll validate by trying to get feedback (empty response is ok)
-        const response = await fetch(`/api/sessions/${sessionId}/feedback`, {
-          method: "HEAD",
+        // Validate by fetching slide endpoint which checks session existence
+        const response = await fetch(`/api/sessions/${sessionId}/slide`, {
+          cache: "no-store",
         });
-        setSessionValid(response.ok || response.status === 405); // 405 = method not allowed but endpoint exists
+        setSessionValid(response.ok);
       } catch (error) {
         console.error("Error validating session:", error);
         setSessionValid(false);
@@ -60,7 +56,9 @@ export default function PresentationPage({
 
     const pollSlides = async () => {
       try {
-        const response = await fetch(`/api/sessions/${sessionId}/slide`);
+        const response = await fetch(`/api/sessions/${sessionId}/slide`, {
+          cache: "no-store",
+        });
         if (response.ok) {
           const data = await response.json();
           if (data.slide) {
