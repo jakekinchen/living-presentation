@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRealtimeAPI, SlideData, ChannelType } from "@/hooks/useRealtimeAPI";
 import { useFeedback } from "@/hooks/useFeedback";
-import { getAcceptedFileTypes } from "@/utils/slideConverter";
+import { getAcceptedFileTypes, isOfficeUploadEnabled } from "@/utils/slideConverter";
 import { SlideCanvas } from "./SlideCanvas";
 import { ChannelOption } from "./ChannelOption";
 import { UploadIcon, SparklesIcon, QuestionIcon, SlidesIcon } from "./Icons";
@@ -64,6 +64,8 @@ export function PresenterView({ onExit }: PresenterViewProps) {
     isAnsweringQuestion,
     createExploratoryFromPrompt,
   } = useRealtimeAPI();
+
+  const officeUploadsEnabled = isOfficeUploadEnabled();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const processedFeedbackIdsRef = useRef<Set<string>>(new Set());
@@ -534,7 +536,11 @@ export function PresenterView({ onExit }: PresenterViewProps) {
                 >
                   <UploadIcon className="mb-1 h-6 w-6 text-zinc-500" />
                   <span className="text-xs text-zinc-500">
-                    {isUploadingSlides ? "Processing..." : "Upload"}
+                    {isUploadingSlides
+                      ? "Processing..."
+                      : officeUploadsEnabled
+                        ? "Upload PDF, PowerPoint, or Keynote"
+                        : "Upload PDF or images"}
                   </span>
                 </button>
               </div>

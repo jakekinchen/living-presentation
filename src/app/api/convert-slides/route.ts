@@ -7,6 +7,10 @@ import { tmpdir } from "os";
 import { existsSync } from "fs";
 import { LibreOfficeFileConverter } from "libreoffice-file-converter";
 
+export const runtime = "nodejs";
+
+const OFFICE_CONVERSION_ENABLED = process.env.NODE_ENV === "development";
+
 // Allowed file extensions for conversion
 const ALLOWED_EXTENSIONS = new Set([".pptx", ".ppt", ".key", ".odp", ".pdf"]);
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
@@ -137,6 +141,17 @@ export async function POST(request: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    }
+
+    if (!OFFICE_CONVERSION_ENABLED) {
+      return NextResponse.json(
+        {
+          error: "PowerPoint/Keynote conversion is not available on this deployment.",
+          suggestion:
+            "Please export your deck to PDF or images and upload those instead. Office uploads are only supported when running locally in development.",
+        },
+        { status: 501 }
+      );
     }
 
     // Validate file size

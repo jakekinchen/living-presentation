@@ -39,9 +39,10 @@ export interface ConvertedSlide {
 }
 
 /**
- * Supported file types and their MIME types
+ * Supported file types and their MIME types.
+ * Office formats are only enabled in local development (see isOfficeUploadEnabled).
  */
-export const SUPPORTED_FILE_TYPES = {
+const BASE_FILE_TYPES = {
   // Images
   "image/png": [".png"],
   "image/jpeg": [".jpg", ".jpeg"],
@@ -51,6 +52,9 @@ export const SUPPORTED_FILE_TYPES = {
   "image/heif": [".heif"],
   // Documents
   "application/pdf": [".pdf"],
+};
+
+const OFFICE_FILE_TYPES = {
   // PowerPoint
   "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
   "application/vnd.ms-powerpoint": [".ppt"],
@@ -59,12 +63,26 @@ export const SUPPORTED_FILE_TYPES = {
   "application/vnd.apple.keynote": [".key"],
 };
 
+export const SUPPORTED_FILE_TYPES = { ...BASE_FILE_TYPES, ...OFFICE_FILE_TYPES };
+
+/**
+ * Office uploads (ppt/pptx/key) are only supported when running locally in development.
+ */
+export function isOfficeUploadEnabled(): boolean {
+  return process.env.NODE_ENV === "development";
+}
+
+function getAcceptedTypeMap() {
+  return isOfficeUploadEnabled() ? SUPPORTED_FILE_TYPES : BASE_FILE_TYPES;
+}
+
 /**
  * Get accepted file extensions for file input
  */
 export function getAcceptedFileTypes(): string {
-  const extensions = Object.values(SUPPORTED_FILE_TYPES).flat();
-  const mimeTypes = Object.keys(SUPPORTED_FILE_TYPES);
+  const map = getAcceptedTypeMap();
+  const extensions = Object.values(map).flat();
+  const mimeTypes = Object.keys(map);
   return [...extensions, ...mimeTypes].join(",");
 }
 
@@ -236,12 +254,18 @@ export async function convertFileToImages(
 
   // Handle PowerPoint files - need server-side conversion
   if (isPowerPointFile(file)) {
+    if (!isOfficeUploadEnabled()) {
+      throw new Error("PowerPoint uploads are not supported on this deployment. Please export to PDF or images.");
+    }
     onProgress?.(`Converting PowerPoint file...`);
     return await convertPowerPointFile(file);
   }
 
   // Handle Keynote files - need server-side conversion
   if (isKeynoteFile(file)) {
+    if (!isOfficeUploadEnabled()) {
+      throw new Error("Keynote uploads are not supported on this deployment. Please export to PDF or images.");
+    }
     onProgress?.(`Converting Keynote file...`);
     return await convertKeynoteFile(file);
   }
@@ -260,6 +284,10 @@ export async function convertFileToImages(
  * Convert PowerPoint file via server API
  */
 async function convertPowerPointFile(file: File): Promise<ConvertedSlide[]> {
+  if (!isOfficeUploadEnabled()) {
+    throw new Error("PowerPoint uploads are not supported on this deployment. Please export to PDF or images.");
+  }
+
   const formData = new FormData();
   formData.append("file", file);
   formData.append("format", "pptx");
@@ -286,6 +314,10 @@ async function convertPowerPointFile(file: File): Promise<ConvertedSlide[]> {
  * Convert Keynote file via server API
  */
 async function convertKeynoteFile(file: File): Promise<ConvertedSlide[]> {
+  if (!isOfficeUploadEnabled()) {
+    throw new Error("Keynote uploads are not supported on this deployment. Please export to PDF or images.");
+  }
+
   const formData = new FormData();
   formData.append("file", file);
   formData.append("format", "key");
