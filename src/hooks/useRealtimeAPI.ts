@@ -113,12 +113,12 @@ export function useRealtimeAPI() {
   modeRef.current = mode;
   exploratoryChannelRef.current = exploratoryChannel;
 
-  // Add slide to exploratory channel queue
+  // Add slide to exploratory channel queue (new slides at top)
   const addToExploratoryChannel = useCallback((newSlide: SlideData) => {
     const slideWithSource = { ...newSlide, source: "exploratory" as const };
     setExploratoryChannel((prev) => {
-      // Limit queue to 10 slides max
-      const newQueue = [...prev.queue, slideWithSource].slice(-10);
+      // Limit queue to 10 slides max, new slides at top
+      const newQueue = [slideWithSource, ...prev.queue].slice(0, 10);
       return { ...prev, queue: newQueue };
     });
     console.log("Added slide to exploratory channel");
@@ -127,106 +127,163 @@ export function useRealtimeAPI() {
   // Track audience question processing
   const [isAnsweringQuestion, setIsAnsweringQuestion] = useState(false);
 
+  interface AudienceQuestionGateResult {
+    accept: boolean;
+    reason?: string;
+    normalizedQuestion?: string;
+    category?: string;
+    priority?: "low" | "normal" | "high";
+  }
+
   // Add slide to audience channel queue (for audience questions)
-  // This now answers the question and generates an image slide
-  const addToAudienceChannel = useCallback(async (questionText: string, feedbackId: string) => {
-    console.log("Processing audience question:", questionText);
-    setIsAnsweringQuestion(true);
+  // This now runs through a gate, answers the question, and generates an image slide
+  const addToAudienceChannel = useCallback(
+    async (
+      questionText: string,
+      feedbackId: string
+    ): Promise<{ accepted: boolean; reason?: string }> => {
+      console.log("Processing audience question:", questionText);
+      setIsAnsweringQuestion(true);
 
-    try {
-      // Step 1: Get an answer to the question
-      const answerResponse = await fetch("/api/answer-question", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: questionText,
-          presentationContext: acceptedSlidesRef.current
-            .slice(-3)
-            .map((s) => `${s.headline}: ${s.visualDescription}`)
-            .join("\n"),
-        }),
-      });
+      try {
+        const trimmedQuestion = questionText.trim();
+        if (!trimmedQuestion) {
+          return { accepted: false, reason: "Empty question text" };
+        }
 
-      if (!answerResponse.ok) {
-        throw new Error("Failed to get answer");
-      }
+        // Step 0: Gate/filter the question quality and relevance
+        let gateResult: AudienceQuestionGateResult | null = null;
+        try {
+          const gateResponse = await fetch("/api/audience-question-gate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              question: trimmedQuestion,
+              slideHistory: acceptedSlidesRef.current,
+            }),
+          });
 
-      const answerData = await answerResponse.json();
-      const answer = answerData.answer;
+          if (gateResponse.ok) {
+            gateResult = (await gateResponse.json()) as AudienceQuestionGateResult;
+          } else {
+            console.error("Audience question gate error:", await gateResponse.text());
+          }
+        } catch (gateError) {
+          console.error("Audience question gate request failed:", gateError);
+        }
 
-      // Step 2: Generate the slide image using Gemini
-      slideCounterRef.current += 1;
-      const currentSlideNumber = slideCounterRef.current;
+        if (gateResult && gateResult.accept === false) {
+          console.log("Audience question rejected by gate:", gateResult.reason);
+          return {
+            accepted: false,
+            reason: gateResult.reason || "Question rejected by gate",
+          };
+        }
 
-      const geminiResponse = await fetch("/api/gemini", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          slideContent: {
-            headline: answer.headline,
-            subheadline: answer.subheadline,
-            bullets: answer.bullets,
-            visualDescription: answer.visualDescription,
-            category: answer.category,
-            sourceTranscript: `Q: ${questionText}`,
+        const gatedQuestion =
+          (gateResult && gateResult.normalizedQuestion) || trimmedQuestion;
+
+        // Step 1: Get an answer to the question
+        const answerResponse = await fetch("/api/answer-question", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question: gatedQuestion,
+            presentationContext: acceptedSlidesRef.current
+              .slice(-3)
+              .map((s) => `${s.headline}: ${s.visualDescription}`)
+              .join("\n"),
+          }),
+        });
+
+        if (!answerResponse.ok) {
+          throw new Error("Failed to get answer");
+        }
+
+        const answerData = await answerResponse.json();
+        const answer = answerData.answer;
+
+        // Step 2: Generate the slide image using Gemini
+        slideCounterRef.current += 1;
+        const currentSlideNumber = slideCounterRef.current;
+
+        const geminiResponse = await fetch("/api/gemini", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slideContent: {
+              headline: answer.headline,
+              subheadline: answer.subheadline,
+              bullets: answer.bullets,
+              visualDescription: answer.visualDescription,
+              category: answer.category,
+              sourceTranscript: `Q: ${gatedQuestion}`,
+            },
+            styleReferences: styleReferencesRef.current,
+            slideNumber: currentSlideNumber,
+          }),
+        });
+
+        if (!geminiResponse.ok) {
+          const errorData = await geminiResponse.json().catch(() => ({}));
+          console.error("Gemini error details:", errorData);
+          throw new Error(errorData.details || "Failed to generate slide image");
+        }
+
+        const geminiData = await geminiResponse.json();
+
+        // Step 3: Create the slide with the generated image
+        const answerSlide: SlideData = {
+          id: `audience-${feedbackId}`,
+          imageUrl: geminiData.slide?.imageUrl,
+          headline: answer.headline,
+          subheadline: answer.subheadline,
+          bullets: answer.bullets,
+          visualDescription: answer.visualDescription,
+          source: "question",
+          originalIdea: {
+            title: `Audience Question`,
+            content: `Q: ${gatedQuestion}`,
+            category: gateResult?.category || answer.category || "question",
           },
-          styleReferences: styleReferencesRef.current,
-          slideNumber: currentSlideNumber,
-        }),
-      });
+          timestamp: new Date().toISOString(),
+        };
 
-      if (!geminiResponse.ok) {
-        const errorData = await geminiResponse.json().catch(() => ({}));
-        console.error("Gemini error details:", errorData);
-        throw new Error(errorData.details || "Failed to generate slide image");
+        setAudienceChannel((prev) => ({
+          ...prev,
+          queue: [...prev.queue, answerSlide],
+        }));
+        console.log("Added answered question slide to audience channel");
+
+        return { accepted: true, reason: gateResult?.reason };
+      } catch (error) {
+        console.error("Failed to process audience question:", error);
+        // Fallback: add the question as-is without an answer
+        const fallbackSlide: SlideData = {
+          id: `audience-${feedbackId}`,
+          headline: questionText,
+          source: "question",
+          originalIdea: {
+            title: "Audience Question",
+            content: questionText,
+            category: "question",
+          },
+          timestamp: new Date().toISOString(),
+        };
+        setAudienceChannel((prev) => ({
+          ...prev,
+          queue: [...prev.queue, fallbackSlide],
+        }));
+        return {
+          accepted: true,
+          reason: "Fallback slide created due to processing error",
+        };
+      } finally {
+        setIsAnsweringQuestion(false);
       }
-
-      const geminiData = await geminiResponse.json();
-
-      // Step 3: Create the slide with the generated image
-      const answerSlide: SlideData = {
-        id: `audience-${feedbackId}`,
-        imageUrl: geminiData.slide?.imageUrl,
-        headline: answer.headline,
-        subheadline: answer.subheadline,
-        bullets: answer.bullets,
-        visualDescription: answer.visualDescription,
-        source: "question",
-        originalIdea: {
-          title: `Q: ${questionText}`,
-          content: answer.headline,
-          category: answer.category,
-        },
-        timestamp: new Date().toISOString(),
-      };
-
-      setAudienceChannel((prev) => ({
-        ...prev,
-        queue: [...prev.queue, answerSlide],
-      }));
-      console.log("Added answered question slide to audience channel");
-    } catch (error) {
-      console.error("Failed to process audience question:", error);
-      // Fallback: add the question as-is without an answer
-      const fallbackSlide: SlideData = {
-        id: `audience-${feedbackId}`,
-        headline: questionText,
-        source: "question",
-        originalIdea: {
-          title: "Audience Question",
-          content: questionText,
-          category: "question",
-        },
-        timestamp: new Date().toISOString(),
-      };
-      setAudienceChannel((prev) => ({
-        ...prev,
-        queue: [...prev.queue, fallbackSlide],
-      }));
-    } finally {
-      setIsAnsweringQuestion(false);
-    }
-  }, []);
+    },
+    []
+  );
 
   // Navigate within a channel (for previewing without selecting)
   const navigateChannel = useCallback((channel: ChannelType, direction: "prev" | "next") => {
@@ -438,6 +495,68 @@ export function useRealtimeAPI() {
     []
   );
 
+  // Generate follow-up exploratory slides after an audience question slide is accepted
+  const generateAudienceFollowups = useCallback(
+    async (questionSlide: SlideData) => {
+      if (questionSlide.source !== "question") return;
+
+      const rawQuestion =
+        questionSlide.originalIdea?.content || questionSlide.headline || "";
+      const cleanedQuestion = rawQuestion.replace(/^Q:\s*/i, "").trim();
+      if (!cleanedQuestion) return;
+
+      try {
+        const response = await fetch("/api/audience-question-followups", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question: cleanedQuestion,
+            answer: {
+              headline: questionSlide.headline,
+              subheadline: questionSlide.subheadline,
+              bullets: questionSlide.bullets,
+              visualDescription:
+                questionSlide.visualDescription ||
+                questionSlide.originalIdea?.content,
+              category: questionSlide.originalIdea?.category,
+            },
+            presentationContext: acceptedSlidesRef.current
+              .slice(-5)
+              .map((s) => `${s.headline}: ${s.visualDescription}`)
+              .join("\n"),
+          }),
+        });
+
+        if (!response.ok) {
+          console.error(
+            "Failed to generate audience follow-up slides:",
+            await response.text()
+          );
+          return;
+        }
+
+        const data = await response.json();
+        const followups = (data.followups || []) as SlideContent[];
+        if (!followups.length) return;
+
+        // Generate exploratory slides for each follow-up idea
+        for (const followup of followups) {
+          await generateSlideImage({
+            headline: followup.headline,
+            subheadline: followup.subheadline,
+            bullets: followup.bullets,
+            visualDescription: followup.visualDescription,
+            category: followup.category,
+            sourceTranscript: `Audience follow-up based on question: ${cleanedQuestion}`,
+          });
+        }
+      } catch (err) {
+        console.error("Error generating audience follow-up slides:", err);
+      }
+    },
+    [generateSlideImage]
+  );
+
   // Remove a slide from exploratory channel (legacy compatibility)
   const removeSlideOption = useCallback((id: string) => {
     setExploratoryChannel((prev) => ({
@@ -448,30 +567,46 @@ export function useRealtimeAPI() {
   }, []);
 
   // Record an accepted slide for context in future gate calls
-  const recordAcceptedSlide = useCallback((slide: SlideData) => {
-    const slideEntry = {
-      id: slide.id,
-      headline: slide.headline || slide.originalIdea?.title || "Untitled",
-      visualDescription: slide.visualDescription || slide.originalIdea?.content || "",
-      category: slide.originalIdea?.category || "concept",
-    };
+  const recordAcceptedSlide = useCallback(
+    (slide: SlideData) => {
+      const slideEntry = {
+        id: slide.id,
+        headline: slide.headline || slide.originalIdea?.title || "Untitled",
+        visualDescription:
+          slide.visualDescription || slide.originalIdea?.content || "",
+        category: slide.originalIdea?.category || "concept",
+      };
 
-    acceptedSlidesRef.current.push(slideEntry);
+      acceptedSlidesRef.current.push(slideEntry);
 
-    // Keep first 2 slides as style references for consistency
-    // These establish the visual style that subsequent slides should follow
-    if (styleReferencesRef.current.length < 2) {
-      styleReferencesRef.current.push({
-        headline: slideEntry.headline,
-        visualDescription: slideEntry.visualDescription,
-        category: slideEntry.category,
-        slideNumber: acceptedSlidesRef.current.length,
-      });
-      console.log("Added style reference slide:", styleReferencesRef.current.length);
-    }
+      // Keep first 2 slides as style references for consistency
+      // These establish the visual style that subsequent slides should follow
+      if (styleReferencesRef.current.length < 2) {
+        styleReferencesRef.current.push({
+          headline: slideEntry.headline,
+          visualDescription: slideEntry.visualDescription,
+          category: slideEntry.category,
+          slideNumber: acceptedSlidesRef.current.length,
+        });
+        console.log(
+          "Added style reference slide:",
+          styleReferencesRef.current.length
+        );
+      }
 
-    console.log("Recorded accepted slide:", acceptedSlidesRef.current.length, "slides in history");
-  }, []);
+      // When an audience question slide is accepted, generate exploratory follow-ups
+      if (slide.source === "question") {
+        void generateAudienceFollowups(slide);
+      }
+
+      console.log(
+        "Recorded accepted slide:",
+        acceptedSlidesRef.current.length,
+        "slides in history"
+      );
+    },
+    [generateAudienceFollowups]
+  );
 
   // Upload and extract slides from files (images, PDFs, PowerPoint, Keynote)
   const uploadSlides = useCallback(async (files: File[]) => {
@@ -522,6 +657,22 @@ export function useRealtimeAPI() {
             ...prev,
             queue: [...prev.queue, ...slidesWithSource],
           }));
+
+          // Use first 2 uploaded slides as style references for exploratory slides
+          // This ensures generated slides match the uploaded presentation's visual style
+          const slidesToUseAsStyle = slidesWithSource.slice(0, 2);
+          slidesToUseAsStyle.forEach((slide: SlideData, index: number) => {
+            if (styleReferencesRef.current.length < 2) {
+              styleReferencesRef.current.push({
+                headline: slide.headline || slide.originalIdea?.title || "Uploaded Slide",
+                visualDescription: slide.visualDescription || slide.originalIdea?.content || "",
+                category: slide.originalIdea?.category || "uploaded",
+                slideNumber: index + 1,
+              });
+              console.log("Set uploaded slide as style reference:", styleReferencesRef.current.length);
+            }
+          });
+
           setUploadProgress("");
         }
       } else {

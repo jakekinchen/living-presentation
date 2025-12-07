@@ -6,26 +6,26 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 // Tool definition for creating a slide
 const createSlideTool = {
   name: "create_slide",
-  description: "Create a presentation slide when there is enough substantive information. Only call this when the transcript contains a complete, well-formed idea worth presenting as a slide.",
+  description: "Create a forward-thinking presentation slide that anticipates and elevates the speaker's ideas. Transform spoken content into compelling visual insights that help the audience see the bigger picture.",
   parameters: {
     type: SchemaType.OBJECT,
     properties: {
       headline: {
         type: SchemaType.STRING,
-        description: "A clear, concise headline for the slide (5-10 words)",
+        description: "A compelling headline that captures the insight or implication, not just the topic (5-10 words). Frame it as a takeaway or forward-looking statement.",
       },
       subheadline: {
         type: SchemaType.STRING,
-        description: "Optional supporting text that adds context (10-20 words)",
+        description: "Optional supporting text that adds depth or points toward implications (10-20 words)",
       },
       bullets: {
         type: SchemaType.ARRAY,
         items: { type: SchemaType.STRING },
-        description: "Optional bullet points for key details (2-4 bullets, each 5-15 words)",
+        description: "Optional bullet points highlighting key implications or actionable insights (2-4 bullets, each 5-15 words)",
       },
       visualDescription: {
         type: SchemaType.STRING,
-        description: "A detailed description of what visual/image would best represent this content for the slide",
+        description: "A detailed description of a visual that reinforces the forward momentum and insight of the idea, not just illustrates the topic literally",
       },
       category: {
         type: SchemaType.STRING,
@@ -126,15 +126,25 @@ ${acceptedSlides.map((slide: AcceptedSlide, i: number) => `${i + 1}. ${slide.hea
 `;
     }
 
-    const prompt = `You are analyzing a live presentation transcript to determine if it contains enough information to create a meaningful presentation slide.
+    const prompt = `You are an anticipatory presentation assistant analyzing a live presentation transcript. Your role is to create FORWARD-THINKING slides that help the audience understand where the speaker is heading, not just summarize what was said.
 
 TRANSCRIPT:
 "${transcript}"
 ${priorIdeasText}${slideHistoryText}${specialInstructions}
+FORWARD-THINKING APPROACH:
+- DON'T just reiterate or summarize what the speaker said
+- DO anticipate the implications, applications, or next logical steps of their ideas
+- Frame content in a way that helps the audience see the bigger picture
+- Think about: "What would help the audience understand WHY this matters?" and "What's the takeaway or insight here?"
+- Transform raw spoken content into polished, insightful presentation content
+- Add value by crystallizing the speaker's point into its most compelling form
+
 GUIDELINES FOR CREATING A SLIDE:
-- Only create a slide if there is a COMPLETE, substantive idea worth presenting
-- The idea should have enough detail to fill a slide meaningfully
-- Look for: key concepts, important points, data/statistics, processes, comparisons, or memorable quotes
+- Create a slide when there is substantive content worth elevating into a visual
+- The slide should ENHANCE the speaker's point, not just repeat it
+- Headlines should capture the insight or implication, not just the topic
+- Visual descriptions should reinforce the forward momentum of the idea
+- Look for: emerging themes, actionable insights, key implications, transformative concepts
 ${isFirstSlide ? "- For the FIRST slide, be MORE LENIENT - an introduction of the topic is enough to create a title slide" : ""}
 ${isConclusionIntent ? "- For CONCLUSION, create a summary slide even if the closing remarks are brief" : ""}
 - Do NOT create a slide for:
@@ -143,7 +153,7 @@ ${isConclusionIntent ? "- For CONCLUSION, create a summary slide even if the clo
   - Repetitive content that was already covered in prior slides
   - Content that is essentially the same as a prior slide (avoid duplicates)
 
-If the transcript contains a complete, slide-worthy idea that is NEW and different from prior slides, call the create_slide function.
+If the transcript contains content worth transforming into a forward-thinking slide, call the create_slide function.
 If not ready for a slide yet, simply respond with a brief explanation of what you're waiting for.`;
 
     const result = await model.generateContent(prompt);

@@ -20,9 +20,6 @@ export function PresenterView({ onExit }: PresenterViewProps) {
     isUploadingSlides,
     uploadProgress,
     error,
-    transcript,
-    fullTranscript,
-    gateStatus,
     mode,
     setMode,
     start,
@@ -49,7 +46,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
   const [creatingSession, setCreatingSession] = useState(false);
 
   // Feedback hook - will connect when sessionId is set
-  const { feedback, unreadCount, dismissFeedback } = useFeedback(sessionId);
+  const { feedback, dismissFeedback } = useFeedback(sessionId);
 
   // Slide navigation state
   const [slideNav, setSlideNav] = useState<{
@@ -97,8 +94,21 @@ export function PresenterView({ onExit }: PresenterViewProps) {
       const alreadyInQueue = audienceChannelState.total > 0 &&
         getChannelSlide("audience")?.id === `audience-${latestFeedback.id}`;
       if (!alreadyInQueue) {
-        addToAudienceChannel(latestFeedback.text, latestFeedback.id);
-        dismissFeedback(latestFeedback.id);
+        (async () => {
+          const result = await addToAudienceChannel(
+            latestFeedback.text,
+            latestFeedback.id
+          );
+          if (result.accepted) {
+            dismissFeedback(latestFeedback.id);
+          } else {
+            // Question was rejected by the gate; keep it visible but mark as read
+            console.log(
+              "Audience question rejected by gate:",
+              result.reason || "No reason provided"
+            );
+          }
+        })();
       }
     }
   }, [feedback, getChannelInfo, getChannelSlide, addToAudienceChannel, dismissFeedback]);
@@ -326,42 +336,22 @@ export function PresenterView({ onExit }: PresenterViewProps) {
           <div className="flex-1 overflow-hidden rounded-xl border border-zinc-800">
             <SlideCanvas slide={currentSlide} />
           </div>
-          {/* Upload slides button */}
-          <div className="mt-3 flex flex-col gap-2">
-            <div className="flex items-center gap-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,.pdf,.pptx,.ppt,.key,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint"
-                multiple
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploadingSlides}
-                className="flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-50"
-              >
-                <UploadIcon className="h-4 w-4" />
-                {isUploadingSlides ? "Processing..." : "Upload Slides"}
-              </button>
-              {slidesChannel.queue.length > 0 && (
-                <span className="text-sm text-zinc-500">
-                  {slidesChannel.queue.length} slide{slidesChannel.queue.length !== 1 ? "s" : ""} in queue
-                </span>
-              )}
-            </div>
-            {uploadProgress && (
-              <p className="text-xs text-blue-400">{uploadProgress}</p>
-            )}
-            <p className="text-xs text-zinc-600">
-              Supports: Images, PDF, PowerPoint (.pptx), Keynote (.key)
-            </p>
-          </div>
+          {/* Hidden file input for upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.pdf,.pptx,.ppt,.key,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint"
+            multiple
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+          {uploadProgress && (
+            <p className="mt-2 text-xs text-blue-400">{uploadProgress}</p>
+          )}
         </div>
 
-        {/* Right side: channel options + transcript */}
-        <div className="flex w-[480px] flex-col gap-4">
+        {/* Right side: channel options */}
+        <div className="flex w-[420px] flex-col gap-4">
           {/* Channel options header */}
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-zinc-500">SLIDE CHANNELS</span>
@@ -434,114 +424,6 @@ export function PresenterView({ onExit }: PresenterViewProps) {
                 </button>
               </div>
             )}
-          </div>
-
-          {/* Test input for audience questions */}
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Add test question..."
-              className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-white placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && e.currentTarget.value.trim()) {
-                  addToAudienceChannel(e.currentTarget.value.trim(), `test-${Date.now()}`);
-                  e.currentTarget.value = "";
-                }
-              }}
-            />
-            <span className="text-xs text-zinc-600 self-center">Enter to add</span>
-          </div>
-
-          {/* Live transcript */}
-          <div className="flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">
-            <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
-              <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
-                {mode === "gated" ? "Accumulated Transcript" : "Live Transcript"}
-              </span>
-              {mode === "gated" && gateStatus && (
-                <span className="text-xs text-blue-400">{gateStatus}</span>
-              )}
-            </div>
-            <div className="max-h-20 overflow-y-auto p-2">
-              {mode === "gated" ? (
-                <>
-                  {fullTranscript ? (
-                    <p className="text-sm text-zinc-400">{fullTranscript}</p>
-                  ) : (
-                    <p className="text-sm italic text-zinc-700">
-                      {isRecording ? "Waiting for speech..." : ""}
-                    </p>
-                  )}
-                  {transcript && transcript !== fullTranscript && (
-                    <p className="mt-2 text-sm text-zinc-500 italic">{transcript}</p>
-                  )}
-                </>
-              ) : (
-                <>
-                  {transcript ? (
-                    <p className="text-sm text-zinc-400">{transcript}</p>
-                  ) : (
-                    <p className="text-sm italic text-zinc-700">
-                      {isRecording ? "Waiting for speech..." : ""}
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Audience Questions List */}
-          <div className="flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">
-            <div className="border-b border-zinc-800 px-4 py-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
-                  Audience Questions
-                </span>
-                {unreadCount > 0 && (
-                  <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs font-semibold text-white">
-                    {unreadCount}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="max-h-64 overflow-y-auto p-4">
-              {feedback.length === 0 ? (
-                <p className="text-sm italic text-zinc-700">
-                  No questions yet. Share the audience URL above.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {feedback.map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-3"
-                    >
-                      <p className="mb-2 text-sm text-zinc-300">{item.text}</p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            addToAudienceChannel(item.text, item.id);
-                            dismissFeedback(item.id);
-                          }}
-                          className="rounded bg-white px-3 py-1 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
-                        >
-                          Add to Queue
-                        </button>
-                        <button
-                          onClick={() => dismissFeedback(item.id)}
-                          className="rounded border border-zinc-600 px-3 py-1 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
-                        >
-                          Dismiss
-                        </button>
-                        <span className="ml-auto text-xs text-zinc-600">
-                          {new Date(item.timestamp).toLocaleTimeString()}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>

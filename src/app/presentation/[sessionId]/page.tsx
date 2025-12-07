@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { use } from "react";
+import { SlideCanvas } from "@/components/presentation/SlideCanvas";
 
 interface SlideData {
   id: string;
@@ -10,7 +11,13 @@ interface SlideData {
   subheadline?: string;
   bullets?: string[];
   backgroundColor?: string;
-  source?: "voice" | "question";
+  visualDescription?: string;
+  originalIdea?: {
+    title: string;
+    content: string;
+    category: string;
+  };
+  source?: "voice" | "question" | "exploratory" | "slides";
 }
 
 export default function PresentationPage({
@@ -160,90 +167,8 @@ export default function PresentationPage({
       );
     }
 
-    // Render image slides
-    if (slide.imageUrl) {
-      return (
-        <div className="flex min-h-screen items-center justify-center bg-black p-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={slide.imageUrl}
-            alt="Presentation Slide"
-            className="max-h-[95vh] max-w-full rounded-lg object-contain shadow-2xl"
-          />
-        </div>
-      );
-    }
-
-    // Special template for audience question slides
-    if (slide.source === "question") {
-      return (
-        <div className="flex min-h-screen flex-col items-center justify-center bg-blue-600 p-12">
-          <div className="max-w-5xl w-full">
-            {/* Question Icon and Label */}
-            <div className="mb-8 flex items-center justify-center gap-3">
-              <svg className="h-12 w-12 text-blue-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="text-2xl font-semibold uppercase tracking-wider text-blue-200">
-                Audience Question
-              </span>
-            </div>
-
-            {/* Question Text */}
-            <div className="rounded-2xl border-4 border-blue-400 bg-white p-12 shadow-2xl">
-              <p className="text-center text-4xl font-bold leading-relaxed text-blue-900">
-                {slide.headline}
-              </p>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Render text-based slides (voice-generated)
-    if (slide.headline) {
-      const bgStyle = slide.backgroundColor?.startsWith("#")
-        ? { backgroundColor: slide.backgroundColor }
-        : {};
-      const bgClass = slide.backgroundColor?.startsWith("#")
-        ? ""
-        : `bg-${slide.backgroundColor || "zinc"}-800`;
-
-      return (
-        <div
-          className={`flex min-h-screen flex-col items-center justify-center p-12 ${bgClass}`}
-          style={bgStyle}
-        >
-          <div className="max-w-4xl text-center">
-            <h1 className="mb-6 text-5xl font-bold leading-tight text-white">
-              {slide.headline}
-            </h1>
-            {slide.subheadline && (
-              <p className="mb-8 text-2xl text-zinc-300">
-                {slide.subheadline}
-              </p>
-            )}
-            {slide.bullets && slide.bullets.length > 0 && (
-              <ul className="space-y-4 text-left">
-                {slide.bullets.map((bullet, i) => (
-                  <li key={i} className="flex items-start gap-4 text-xl text-zinc-200">
-                    <span className="mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-zinc-500" />
-                    {bullet}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    // Fallback for incomplete slides
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-800 text-zinc-400">
-        <p>Slide data incomplete</p>
-      </div>
-    );
+    // Delegate slide rendering (including audience question templating) to SlideCanvas
+    return <SlideCanvas slide={slide as any} isFullscreen />;
   };
 
   // Main presentation view
