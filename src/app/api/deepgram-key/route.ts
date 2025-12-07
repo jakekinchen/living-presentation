@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
+// Hardcoded Deepgram project ID to avoid relying on DEEPGRAM_PROJECT_ID env var
+const DEEPGRAM_PROJECT_ID = "551c34f3-7f28-46f5-a800-576627695ad0";
+
 export async function GET() {
   const apiKey = process.env.DEEPGRAM_API_KEY;
-  const projectId = process.env.DEEPGRAM_PROJECT_ID;
 
   if (!apiKey) {
     console.error("DEEPGRAM_API_KEY is not set");
@@ -14,17 +16,9 @@ export async function GET() {
     );
   }
 
-  if (!projectId) {
-    console.error("DEEPGRAM_PROJECT_ID is not set");
-    return NextResponse.json(
-      { error: "Missing DEEPGRAM_PROJECT_ID environment variable" },
-      { status: 500 }
-    );
-  }
-
   try {
     const response = await fetch(
-      `https://api.deepgram.com/v1/projects/${projectId}/keys`,
+      `https://api.deepgram.com/v1/projects/${DEEPGRAM_PROJECT_ID}/keys`,
       {
         method: "POST",
         headers: {
@@ -75,4 +69,3 @@ export async function GET() {
     );
   }
 }
-
