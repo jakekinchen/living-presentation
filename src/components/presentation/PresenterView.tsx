@@ -38,6 +38,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
     getChannelInfo,
     useSlideFromChannel,
     addToAudienceChannel,
+    isAnsweringQuestion,
   } = useRealtimeAPI();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -369,8 +370,8 @@ export function PresenterView({ onExit }: PresenterViewProps) {
             )}
           </div>
 
-          {/* Three channel options */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* Three channel options - stacked vertically */}
+          <div className="flex flex-col gap-3">
             {/* Exploratory Channel */}
             <ChannelOption
               channel="exploratory"
@@ -396,7 +397,8 @@ export function PresenterView({ onExit }: PresenterViewProps) {
               channelInfo={getChannelInfo("audience")}
               onNavigate={(dir) => navigateChannel("audience", dir)}
               onUse={() => useChannelSlide("audience")}
-              emptyMessage="No questions yet"
+              isProcessing={isAnsweringQuestion}
+              emptyMessage={isAnsweringQuestion ? "Answering question..." : "No questions yet"}
             />
 
             {/* Uploaded Slides Channel */}
@@ -460,7 +462,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
                 <span className="text-xs text-blue-400">{gateStatus}</span>
               )}
             </div>
-            <div className="max-h-48 overflow-y-auto p-4">
+            <div className="max-h-20 overflow-y-auto p-2">
               {mode === "gated" ? (
                 <>
                   {fullTranscript ? (

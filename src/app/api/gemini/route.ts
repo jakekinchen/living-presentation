@@ -44,7 +44,7 @@ STYLE CONSISTENCY REQUIREMENTS:
 This is slide #${slideNumber} in an ongoing presentation. You MUST maintain visual consistency with the established slide style.
 
 Previous slides in this presentation:
-${styleReferences.map((ref) => `- Slide ${ref.slideNumber}: "${ref.headline}" (${ref.category}) - ${ref.visualDescription.slice(0, 100)}...`).join("\n")}
+${styleReferences.map((ref) => `- Slide ${ref.slideNumber}: "${ref.headline}" (${ref.category}) - ${(ref.visualDescription || "").slice(0, 100)}...`).join("\n")}
 
 CRITICAL STYLE RULES:
 - Use the SAME color palette and visual style as the previous slides
@@ -123,9 +123,10 @@ The image should be a professional, modern presentation slide. It should include
       },
     });
   } catch (error) {
-    console.error("Gemini API error:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Gemini API error:", errorMessage, error);
     return NextResponse.json(
-      { error: "Failed to generate slide content" },
+      { error: "Failed to generate slide content", details: errorMessage },
       { status: 500 }
     );
   }

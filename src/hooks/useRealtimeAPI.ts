@@ -124,24 +124,108 @@ export function useRealtimeAPI() {
     console.log("Added slide to exploratory channel");
   }, []);
 
+  // Track audience question processing
+  const [isAnsweringQuestion, setIsAnsweringQuestion] = useState(false);
+
   // Add slide to audience channel queue (for audience questions)
-  const addToAudienceChannel = useCallback((questionText: string, feedbackId: string) => {
-    const questionSlide: SlideData = {
-      id: `audience-${feedbackId}`,
-      headline: questionText,
-      source: "question",
-      originalIdea: {
-        title: "Audience Question",
-        content: questionText,
-        category: "question",
-      },
-      timestamp: new Date().toISOString(),
-    };
-    setAudienceChannel((prev) => ({
-      ...prev,
-      queue: [...prev.queue, questionSlide],
-    }));
-    console.log("Added question to audience channel");
+  // This now answers the question and generates an image slide
+  const addToAudienceChannel = useCallback(async (questionText: string, feedbackId: string) => {
+    console.log("Processing audience question:", questionText);
+    setIsAnsweringQuestion(true);
+
+    try {
+      // Step 1: Get an answer to the question
+      const answerResponse = await fetch("/api/answer-question", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: questionText,
+          presentationContext: acceptedSlidesRef.current
+            .slice(-3)
+            .map((s) => `${s.headline}: ${s.visualDescription}`)
+            .join("\n"),
+        }),
+      });
+
+      if (!answerResponse.ok) {
+        throw new Error("Failed to get answer");
+      }
+
+      const answerData = await answerResponse.json();
+      const answer = answerData.answer;
+
+      // Step 2: Generate the slide image using Gemini
+      slideCounterRef.current += 1;
+      const currentSlideNumber = slideCounterRef.current;
+
+      const geminiResponse = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slideContent: {
+            headline: answer.headline,
+            subheadline: answer.subheadline,
+            bullets: answer.bullets,
+            visualDescription: answer.visualDescription,
+            category: answer.category,
+            sourceTranscript: `Q: ${questionText}`,
+          },
+          styleReferences: styleReferencesRef.current,
+          slideNumber: currentSlideNumber,
+        }),
+      });
+
+      if (!geminiResponse.ok) {
+        const errorData = await geminiResponse.json().catch(() => ({}));
+        console.error("Gemini error details:", errorData);
+        throw new Error(errorData.details || "Failed to generate slide image");
+      }
+
+      const geminiData = await geminiResponse.json();
+
+      // Step 3: Create the slide with the generated image
+      const answerSlide: SlideData = {
+        id: `audience-${feedbackId}`,
+        imageUrl: geminiData.slide?.imageUrl,
+        headline: answer.headline,
+        subheadline: answer.subheadline,
+        bullets: answer.bullets,
+        visualDescription: answer.visualDescription,
+        source: "question",
+        originalIdea: {
+          title: `Q: ${questionText}`,
+          content: answer.headline,
+          category: answer.category,
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      setAudienceChannel((prev) => ({
+        ...prev,
+        queue: [...prev.queue, answerSlide],
+      }));
+      console.log("Added answered question slide to audience channel");
+    } catch (error) {
+      console.error("Failed to process audience question:", error);
+      // Fallback: add the question as-is without an answer
+      const fallbackSlide: SlideData = {
+        id: `audience-${feedbackId}`,
+        headline: questionText,
+        source: "question",
+        originalIdea: {
+          title: "Audience Question",
+          content: questionText,
+          category: "question",
+        },
+        timestamp: new Date().toISOString(),
+      };
+      setAudienceChannel((prev) => ({
+        ...prev,
+        queue: [...prev.queue, fallbackSlide],
+      }));
+    } finally {
+      setIsAnsweringQuestion(false);
+    }
   }, []);
 
   // Navigate within a channel (for previewing without selecting)
@@ -681,5 +765,6 @@ export function useRealtimeAPI() {
     getChannelInfo,
     useSlideFromChannel,
     addToAudienceChannel,
+    isAnsweringQuestion,
   };
 }
