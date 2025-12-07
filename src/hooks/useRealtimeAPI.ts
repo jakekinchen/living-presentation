@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createClient,
   LiveTranscriptionEvents,
@@ -91,6 +91,19 @@ export function useRealtimeAPI() {
     styleReferencesRef,
     slideCounterRef,
   });
+
+  const lastExploratoryGenerationRef = useRef<number>(0);
+  const exploratoryGenerationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingExploratoryContextRef = useRef<{
+    acceptedSlides: SlideData[];
+    audienceQuestions: SlideData[];
+    presenterPrompts: { prompt: string; currentSlide: SlideData | null }[];
+  }>({
+    acceptedSlides: [],
+    audienceQuestions: [],
+    presenterPrompts: [],
+  });
+  const EXPLORATORY_INTERVAL_MS = 20000;
 
   // Generate slide image from structured content (used in gated mode)
   const generateSlideImage = useCallback(
@@ -230,190 +243,102 @@ export function useRealtimeAPI() {
     []
   );
 
-  // Generate exploratory follow-up slides based on the currently accepted slide
-  // This is especially useful when we DON'T have a live microphone, but we
-  // do have an uploaded deck and want ideas for "what could come next".
-  const generateSlideFollowups = useCallback(
-    async (slide: SlideData) => {
-      const headline =
-        slide.headline || slide.originalIdea?.title || "Untitled slide";
-      const visualDescription =
-        slide.visualDescription || slide.originalIdea?.content || "";
+  // Consolidate pending exploratory triggers into a single generation run with all fresh context.
+  const generateExploratorySlidesFromContext = useCallback(
+    async ({
+      acceptedSlides,
+      audienceQuestions,
+      presenterPrompts,
+    }: {
+      acceptedSlides: SlideData[];
+      audienceQuestions: SlideData[];
+      presenterPrompts: { prompt: string; currentSlide: SlideData | null }[];
+    }) => {
+      const latestPrompt = presenterPrompts[presenterPrompts.length - 1];
 
-      if (!headline.trim()) return;
-
-      try {
-        const response = await fetch("/api/slide-followups", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            currentSlide: {
-              headline,
-              subheadline: slide.subheadline,
-              bullets: slide.bullets,
-              visualDescription,
-              category: slide.originalIdea?.category || "concept",
-              source: slide.source,
-            },
-            presentationContext: acceptedSlidesRef.current
-              .slice(-5)
-              .map(
-                (s, index) =>
-                  `${index + 1}. ${s.headline}: ${s.visualDescription}`
-              )
-              .join("\n"),
-            transcriptContext: fullTranscriptRef.current || "",
-          }),
-        });
-
-        if (!response.ok) {
-          console.error(
-            "Failed to generate slide follow-up suggestions:",
-            await response.text()
-          );
-          return;
-        }
-
-        const data = await response.json();
-        const followups = (data.followups || []) as FollowupSlideContent[];
-        if (!followups.length) return;
-
-        for (const followup of followups) {
-          await generateSlideImage({
-            headline: followup.headline,
-            subheadline: followup.subheadline,
-            bullets: followup.bullets,
-            visualDescription: followup.visualDescription,
-            category: followup.category,
-            sourceTranscript: `Follow-up idea based on slide "${headline}"`,
-          });
-        }
-      } catch (err) {
-        console.error("Error generating slide follow-up suggestions:", err);
+      const promptSections: string[] = [];
+      if (presenterPrompts.length) {
+        const promptList = presenterPrompts
+          .map((entry) => `- ${entry.prompt}`)
+          .join("\n");
+        promptSections.push(`Presenter prompts to explore:\n${promptList}`);
       }
-    },
-    [generateSlideImage, isConnected, isRecording]
-  );
 
-  // Generate follow-up exploratory slides after an audience question slide is accepted
-  const generateAudienceFollowups = useCallback(
-    async (questionSlide: SlideData) => {
-      if (questionSlide.source !== "question") return;
-
-      const rawQuestion =
-        questionSlide.originalIdea?.content || questionSlide.headline || "";
-      const cleanedQuestion = rawQuestion.replace(/^Q:\s*/i, "").trim();
-      if (!cleanedQuestion) return;
-
-      try {
-        const response = await fetch("/api/audience-question-followups", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            question: cleanedQuestion,
-            answer: {
-              headline: questionSlide.headline,
-              subheadline: questionSlide.subheadline,
-              bullets: questionSlide.bullets,
-              visualDescription:
-                questionSlide.visualDescription ||
-                questionSlide.originalIdea?.content,
-              category: questionSlide.originalIdea?.category,
-            },
-            presentationContext: acceptedSlidesRef.current
-              .slice(-5)
-              .map((s) => `${s.headline}: ${s.visualDescription}`)
-              .join("\n"),
-          }),
-        });
-
-        if (!response.ok) {
-          console.error(
-            "Failed to generate audience follow-up slides:",
-            await response.text()
-          );
-          return;
-        }
-
-        const data = await response.json();
-        const followups = (data.followups || []) as SlideContent[];
-        if (!followups.length) return;
-
-        // Generate exploratory slides for each follow-up idea
-        for (const followup of followups) {
-          await generateSlideImage({
-            headline: followup.headline,
-            subheadline: followup.subheadline,
-            bullets: followup.bullets,
-            visualDescription: followup.visualDescription,
-            category: followup.category,
-            sourceTranscript: `Audience follow-up based on question: ${cleanedQuestion}`,
-          });
-        }
-      } catch (err) {
-        console.error("Error generating audience follow-up slides:", err);
+      if (acceptedSlides.length) {
+        const acceptedSummary = acceptedSlides
+          .slice(-3)
+          .map((s) => {
+            const title = s.headline || s.originalIdea?.title || "Slide";
+            const desc = s.visualDescription || s.originalIdea?.content || "";
+            return `- ${title}: ${desc}`;
+          })
+          .join("\n");
+        promptSections.push(
+          `Follow-ups requested for recently accepted slides:\n${acceptedSummary}`
+        );
       }
-    },
-    [generateSlideImage]
-  );
 
-  // Generate exploratory slides based on an explicit presenter prompt.
-  // This blends the typed idea with current slide, slide history, uploaded deck,
-  // audience signals, and any available transcript.
-  const createExploratoryFromPrompt = useCallback(
-    async (prompt: string, currentSlide: SlideData | null) => {
-      const trimmed = prompt.trim();
-      if (!trimmed) return;
+      if (audienceQuestions.length) {
+        const questionSummary = audienceQuestions
+          .slice(-3)
+          .map((q) => {
+            const title =
+              q.originalIdea?.content ||
+              q.headline ||
+              q.visualDescription ||
+              "Audience question";
+            return `- ${title}`;
+          })
+          .join("\n");
+        promptSections.push(`Audience questions to consider:\n${questionSummary}`);
+      }
+
+      const combinedPrompt =
+        promptSections.length > 0
+          ? `Propose the most valuable next slide ideas. Prioritize the latest presenter intent when present, and incorporate all recent cues.\n\n${promptSections.join(
+              "\n\n"
+            )}`
+          : "Propose the most valuable next slide ideas based on the latest presentation context.";
+
+      const slideHistoryContext = acceptedSlidesRef.current
+        .map(
+          (s, index) =>
+            `${index + 1}. ${s.headline}: ${s.visualDescription}`
+        )
+        .join("\n");
+
+      const uploadedSlidesContext = slidesChannel.queue
+        .slice(0, 5)
+        .map((s, index) => {
+          const title = s.headline || s.originalIdea?.title || "Slide";
+          const desc = s.visualDescription || s.originalIdea?.content || "";
+          return `Uploaded ${index + 1}: ${title} — ${desc}`;
+        })
+        .join("\n");
+
+      const audienceContext = audienceChannel.queue
+        .slice(0, 5)
+        .map((s, index) => {
+          const title = s.headline || s.originalIdea?.title || "Audience";
+          const desc = s.visualDescription || s.originalIdea?.content || "";
+          return `Audience ${index + 1}: ${title} — ${desc}`;
+        })
+        .join("\n");
+
+      const slideForContext: SlideData | null =
+        latestPrompt?.currentSlide ||
+        acceptedSlides[acceptedSlides.length - 1] ||
+        acceptedSlidesRef.current[acceptedSlidesRef.current.length - 1] ||
+        null;
 
       setIsProcessing(true);
 
       try {
-        const lastAccepted =
-          acceptedSlidesRef.current[acceptedSlidesRef.current.length - 1] ||
-          null;
-
-        const slideHistoryContext = acceptedSlidesRef.current
-          .map(
-            (s, index) =>
-              `${index + 1}. ${s.headline}: ${s.visualDescription}`
-          )
-          .join("\n");
-
-        const uploadedSlidesContext = slidesChannel.queue
-          .slice(0, 5)
-          .map((s, index) => {
-            const title = s.headline || s.originalIdea?.title || "Slide";
-            const desc =
-              s.visualDescription || s.originalIdea?.content || "";
-            return `Uploaded ${index + 1}: ${title} — ${desc}`;
-          })
-          .join("\n");
-
-        const audienceContext = audienceChannel.queue
-          .slice(0, 5)
-          .map((s, index) => {
-            const title = s.headline || s.originalIdea?.title || "Audience";
-            const desc =
-              s.visualDescription || s.originalIdea?.content || "";
-            return `Audience ${index + 1}: ${title} — ${desc}`;
-          })
-          .join("\n");
-
-        const slideForContext: SlideData | null =
-          currentSlide ||
-          (lastAccepted
-            ? {
-                id: lastAccepted.id,
-                headline: lastAccepted.headline,
-                visualDescription: lastAccepted.visualDescription,
-              }
-            : null);
-
         const response = await fetch("/api/exploratory-input", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: trimmed,
+            prompt: combinedPrompt,
             currentSlide: slideForContext
               ? {
                   headline: slideForContext.headline,
@@ -423,8 +348,7 @@ export function useRealtimeAPI() {
                     slideForContext.visualDescription ||
                     slideForContext.originalIdea?.content,
                   category:
-                    slideForContext.originalIdea?.category ||
-                    (lastAccepted ? lastAccepted.category : "concept"),
+                    slideForContext.originalIdea?.category || "concept",
                 }
               : null,
             transcriptContext: fullTranscriptRef.current || "",
@@ -436,7 +360,7 @@ export function useRealtimeAPI() {
 
         if (!response.ok) {
           console.error(
-            "Failed to generate exploratory slides from prompt:",
+            "Failed to generate exploratory slides:",
             await response.text()
           );
           return;
@@ -444,29 +368,147 @@ export function useRealtimeAPI() {
 
         const data = await response.json();
         const followups = (data.followups || []) as FollowupSlideContent[];
-        if (!followups.length) return;
+        const cleanedFollowups = followups
+          .filter((f) => f && typeof f.headline === "string")
+          .slice(0, 1);
 
-        for (const followup of followups) {
+        const sourceTranscriptParts: string[] = [];
+        if (latestPrompt) {
+          sourceTranscriptParts.push(`Presenter prompt: "${latestPrompt.prompt}"`);
+        }
+        if (acceptedSlides.length) {
+          sourceTranscriptParts.push(
+            `Follow-ups requested for ${acceptedSlides.length} accepted slide(s)`
+          );
+        }
+        if (audienceQuestions.length) {
+          sourceTranscriptParts.push(
+            `Audience signals/questions x${audienceQuestions.length}`
+          );
+        }
+        const sourceTranscript =
+          sourceTranscriptParts.join(" | ") ||
+          "Exploratory generation based on recent context";
+
+        for (const followup of cleanedFollowups) {
           await generateSlideImage({
             headline: followup.headline,
             subheadline: followup.subheadline,
             bullets: followup.bullets,
             visualDescription: followup.visualDescription,
             category: followup.category,
-            sourceTranscript: `Presenter prompt: "${trimmed}"`,
+            sourceTranscript,
           });
         }
       } catch (err) {
-        console.error(
-          "Error generating exploratory slides from prompt:",
-          err
-        );
+        console.error("Error generating exploratory slides from context:", err);
       } finally {
         setIsProcessing(false);
       }
     },
-    [generateSlideImage, slidesChannel.queue, audienceChannel.queue]
+    [audienceChannel.queue, generateSlideImage, slidesChannel.queue]
   );
+
+  const triggerExploratoryGeneration = useCallback(
+    async (forceNow = false) => {
+      const pendingContext = pendingExploratoryContextRef.current;
+      const hasPendingContext =
+        pendingContext.acceptedSlides.length > 0 ||
+        pendingContext.audienceQuestions.length > 0 ||
+        pendingContext.presenterPrompts.length > 0;
+
+      if (!hasPendingContext) return;
+
+      const now = Date.now();
+      const elapsed = now - lastExploratoryGenerationRef.current;
+
+      if (elapsed < EXPLORATORY_INTERVAL_MS && !forceNow) {
+        if (exploratoryGenerationTimeoutRef.current) {
+          clearTimeout(exploratoryGenerationTimeoutRef.current);
+        }
+        const delay = EXPLORATORY_INTERVAL_MS - elapsed;
+        exploratoryGenerationTimeoutRef.current = setTimeout(() => {
+          void triggerExploratoryGeneration(true);
+        }, delay);
+        return;
+      }
+
+      lastExploratoryGenerationRef.current = now;
+
+      if (exploratoryGenerationTimeoutRef.current) {
+        clearTimeout(exploratoryGenerationTimeoutRef.current);
+        exploratoryGenerationTimeoutRef.current = null;
+      }
+
+      const contextToGenerate = {
+        acceptedSlides: [...pendingContext.acceptedSlides],
+        audienceQuestions: [...pendingContext.audienceQuestions],
+        presenterPrompts: [...pendingContext.presenterPrompts],
+      };
+
+      pendingExploratoryContextRef.current = {
+        acceptedSlides: [],
+        audienceQuestions: [],
+        presenterPrompts: [],
+      };
+
+      await generateExploratorySlidesFromContext(contextToGenerate);
+    },
+    [generateExploratorySlidesFromContext]
+  );
+
+  // Generate exploratory follow-up slides based on the currently accepted slide
+  // This is especially useful when we DON'T have a live microphone, but we
+  // do have an uploaded deck and want ideas for "what could come next".
+  const generateSlideFollowups = useCallback(
+    (slide: SlideData) => {
+      const headline =
+        slide.headline || slide.originalIdea?.title || "Untitled slide";
+
+      if (!headline.trim()) return;
+
+      pendingExploratoryContextRef.current.acceptedSlides.push(slide);
+      void triggerExploratoryGeneration();
+    },
+    [triggerExploratoryGeneration]
+  );
+
+  // Generate follow-up exploratory slides after an audience question slide is accepted
+  const generateAudienceFollowups = useCallback(
+    (questionSlide: SlideData) => {
+      if (questionSlide.source !== "question") return;
+
+      pendingExploratoryContextRef.current.audienceQuestions.push(questionSlide);
+      void triggerExploratoryGeneration();
+    },
+    [triggerExploratoryGeneration]
+  );
+
+  // Generate exploratory slides based on an explicit presenter prompt.
+  // This blends the typed idea with current slide, slide history, uploaded deck,
+  // audience signals, and any available transcript.
+  const createExploratoryFromPrompt = useCallback(
+    (prompt: string, currentSlide: SlideData | null) => {
+      const trimmed = prompt.trim();
+      if (!trimmed) return;
+
+      pendingExploratoryContextRef.current.presenterPrompts.push({
+        prompt: trimmed,
+        currentSlide,
+      });
+
+      void triggerExploratoryGeneration(true);
+    },
+    [triggerExploratoryGeneration]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (exploratoryGenerationTimeoutRef.current) {
+        clearTimeout(exploratoryGenerationTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Record an accepted slide for context in future gate calls
   const recordAcceptedSlide = useCallback(
@@ -669,6 +711,17 @@ export function useRealtimeAPI() {
       connectionRef.current.requestClose();
       connectionRef.current = null;
     }
+
+    if (exploratoryGenerationTimeoutRef.current) {
+      clearTimeout(exploratoryGenerationTimeoutRef.current);
+      exploratoryGenerationTimeoutRef.current = null;
+    }
+    pendingExploratoryContextRef.current = {
+      acceptedSlides: [],
+      audienceQuestions: [],
+      presenterPrompts: [],
+    };
+    lastExploratoryGenerationRef.current = 0;
 
     setIsConnected(false);
     setIsRecording(false);
