@@ -621,6 +621,8 @@ export function useRealtimeAPI() {
 
     try {
       // Convert all files to images (handles PDFs, PPTX, etc.)
+      // NOTE: For very large PDFs, only the first N pages are converted
+      // (see pdfToImages maxPages setting) to keep processing responsive.
       const convertedSlides = await convertFilesToImages(
         files,
         (message, current, total) => {

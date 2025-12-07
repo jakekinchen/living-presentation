@@ -126,7 +126,11 @@ export async function imageToDataUrl(file: File): Promise<ConvertedSlide> {
 /**
  * Convert a PDF file to an array of image data URLs (one per page)
  */
-export async function pdfToImages(file: File, scale: number = 2.0): Promise<ConvertedSlide[]> {
+export async function pdfToImages(
+  file: File,
+  scale: number = 1.5,
+  maxPages: number = 50
+): Promise<ConvertedSlide[]> {
   console.log("Starting PDF conversion for:", file.name);
 
   const pdfjs = await withTimeout(
@@ -146,8 +150,13 @@ export async function pdfToImages(file: File, scale: number = 2.0): Promise<Conv
     "Loading PDF document"
   );
 
-  const numPages = pdf.numPages;
-  console.log(`PDF loaded with ${numPages} pages`);
+  const numPages = Math.min(pdf.numPages, maxPages);
+  if (pdf.numPages > maxPages) {
+    console.warn(
+      `PDF has ${pdf.numPages} pages, limiting conversion to first ${maxPages}`
+    );
+  }
+  console.log(`PDF loaded with ${pdf.numPages} pages, converting ${numPages}`);
   const slides: ConvertedSlide[] = [];
 
   for (let pageNum = 1; pageNum <= numPages; pageNum++) {
@@ -183,7 +192,8 @@ export async function pdfToImages(file: File, scale: number = 2.0): Promise<Conv
         `Rendering page ${pageNum}`
       );
 
-      const dataUrl = canvas.toDataURL("image/png");
+      // Use JPEG to significantly reduce payload size for extraction
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
       slides.push({
         dataUrl,
         fileName: `${file.name} - Page ${pageNum}`,

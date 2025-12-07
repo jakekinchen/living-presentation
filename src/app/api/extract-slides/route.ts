@@ -35,22 +35,7 @@ export async function POST(request: NextRequest) {
     // Use Flash Lite for fast extraction
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
 
-    const extractedSlides: ExtractedSlide[] = [];
-
-    for (const image of images) {
-      const { dataUrl, fileName } = image;
-
-      // Extract the base64 data and mime type from data URL
-      const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
-      if (!matches) {
-        console.error("Invalid data URL format for:", fileName);
-        continue;
-      }
-
-      const mimeType = matches[1];
-      const base64Data = matches[2];
-
-      const prompt = `Analyze this presentation slide image and extract the following information in JSON format:
+    const prompt = `Analyze this presentation slide image and extract the following information in JSON format:
 
 {
   "headline": "The main title or headline of the slide (string)",
@@ -62,6 +47,25 @@ export async function POST(request: NextRequest) {
 }
 
 Focus on extracting the text content accurately and describing the visual layout. If there's no subheadline or bullets, use null or empty array. Return ONLY valid JSON, no markdown formatting.`;
+
+    // Process slides with limited parallelism for better latency on multi-slide uploads
+    const maxConcurrency = 4;
+    const results: (ExtractedSlide | null)[] = new Array(images.length).fill(null);
+    let currentIndex = 0;
+
+    async function processImage(index: number): Promise<void> {
+      const image = images[index];
+      const { dataUrl, fileName } = image;
+
+      // Extract the base64 data and mime type from data URL
+      const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
+      if (!matches) {
+        console.error("Invalid data URL format for:", fileName);
+        return;
+      }
+
+      const mimeType = matches[1];
+      const base64Data = matches[2];
 
       try {
         const result = await model.generateContent([
@@ -113,11 +117,27 @@ Focus on extracting the text content accurately and describing the visual layout
           isUploaded: true,
         };
 
-        extractedSlides.push(extractedSlide);
+        results[index] = extractedSlide;
       } catch (err) {
         console.error("Failed to extract slide:", fileName, err);
       }
     }
+
+    async function worker() {
+      while (true) {
+        const index = currentIndex++;
+        if (index >= images.length) break;
+        // eslint-disable-next-line no-await-in-loop
+        await processImage(index);
+      }
+    }
+
+    const workerCount = Math.min(maxConcurrency, images.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+    const extractedSlides: ExtractedSlide[] = results.filter(
+      (slide): slide is ExtractedSlide => slide !== null
+    );
 
     return NextResponse.json({
       success: true,
