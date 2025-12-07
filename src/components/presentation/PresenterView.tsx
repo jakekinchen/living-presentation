@@ -254,110 +254,117 @@ export function PresenterView({ onExit }: PresenterViewProps) {
   return (
     <div className="flex min-h-screen flex-col bg-zinc-950">
       {/* Header */}
-      <header className="flex flex-col gap-3 border-b border-zinc-800 px-6 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-lg font-semibold text-white">Presenter Controls</h1>
-            <div className="flex items-center gap-2">
+      <header className="flex flex-col gap-3 border-b border-zinc-800 px-4 py-3 sm:px-6">
+        {/* Top row: Title, status, and primary actions */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+            <h1 className="text-base font-semibold text-white sm:text-lg">Presenter Controls</h1>
+            <div className="flex flex-wrap items-center gap-2">
               {isRecording ? (
-                <span className="flex items-center gap-2 rounded-full bg-red-500/20 px-3 py-1 text-sm text-red-400">
+                <span className="flex items-center gap-2 rounded-full bg-red-500/20 px-2 py-1 text-xs text-red-400 sm:px-3 sm:text-sm">
                   <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
                   Live
                 </span>
               ) : isConnected ? (
-                <span className="rounded-full bg-green-500/20 px-3 py-1 text-sm text-green-400">
+                <span className="rounded-full bg-green-500/20 px-2 py-1 text-xs text-green-400 sm:px-3 sm:text-sm">
                   Connected
                 </span>
               ) : (
-                <span className="rounded-full bg-zinc-700 px-3 py-1 text-sm text-zinc-400">
-                  {creatingSession ? "Creating session..." : "Ready"}
+                <span className="rounded-full bg-zinc-700 px-2 py-1 text-xs text-zinc-400 sm:px-3 sm:text-sm">
+                  {creatingSession ? "Creating..." : "Ready"}
                 </span>
               )}
               {isProcessing && (
-                <span className="rounded-full bg-blue-500/20 px-3 py-1 text-sm text-blue-400">
+                <span className="rounded-full bg-blue-500/20 px-2 py-1 text-xs text-blue-400 sm:px-3 sm:text-sm">
                   Generating...
                 </span>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Audience display controls */}
-            {audienceUrl && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowQRCode(!showQRCode)}
-                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                    showQRCode
-                      ? "bg-white text-zinc-900"
-                      : "border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-                  }`}
-                >
-                  {showQRCode ? "Hide QR Code on presentation screen" : "Show QR Code on presentation screen"}
-                </button>
-                <button
-                  onClick={() => setShowUrl(!showUrl)}
-                  className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
-                >
-                  {showUrl ? "Hide URL" : "Show URL"}
-                </button>
-              </div>
-            )}
-
-            {/* Mode Toggle */}
-            <div className="flex items-center gap-2 rounded-lg border border-zinc-700 p-1">
-              <button
-                onClick={() => setMode("gated")}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                  mode === "gated"
-                    ? "bg-zinc-700 text-white"
-                    : "text-zinc-400 hover:text-white"
-                }`}
-              >
-                Gated
-              </button>
-              <button
-                onClick={() => setMode("stream-of-consciousness")}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                  mode === "stream-of-consciousness"
-                    ? "bg-zinc-700 text-white"
-                    : "text-zinc-400 hover:text-white"
-                }`}
-              >
-                Stream
-              </button>
-            </div>
-
-            <button
-              onClick={openPresentationWindow}
-              disabled={!sessionId}
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Open Presentation Window
-            </button>
+          {/* Primary actions - always visible */}
+          <div className="flex items-center gap-2">
             {!isRecording && !isConnected && (
               <button
                 onClick={start}
-                className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+                className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 sm:px-4 sm:py-2 sm:text-sm"
               >
-                Start Recording
+                Start
               </button>
             )}
             {isRecording && (
               <button
                 onClick={stop}
-                className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600"
+                className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-600 sm:px-4 sm:py-2 sm:text-sm"
               >
                 Stop
               </button>
             )}
             <button
               onClick={handleExit}
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white sm:px-4 sm:py-2 sm:text-sm"
             >
               Exit
             </button>
           </div>
+        </div>
+
+        {/* Secondary controls row - wraps on mobile */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Mode Toggle */}
+          <div className="flex items-center gap-1 rounded-lg border border-zinc-700 p-1">
+            <button
+              onClick={() => setMode("gated")}
+              className={`rounded-md px-2 py-1 text-xs font-medium transition-colors sm:px-3 sm:py-1.5 ${
+                mode === "gated"
+                  ? "bg-zinc-700 text-white"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              Gated
+            </button>
+            <button
+              onClick={() => setMode("stream-of-consciousness")}
+              className={`rounded-md px-2 py-1 text-xs font-medium transition-colors sm:px-3 sm:py-1.5 ${
+                mode === "stream-of-consciousness"
+                  ? "bg-zinc-700 text-white"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              Stream
+            </button>
+          </div>
+
+          <button
+            onClick={openPresentationWindow}
+            disabled={!sessionId}
+            className="hidden rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 sm:block sm:px-4 sm:py-2 sm:text-sm"
+          >
+            Open Presentation
+          </button>
+
+          {/* Audience display controls */}
+          {audienceUrl && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowQRCode(!showQRCode)}
+                className={`rounded-lg px-2 py-1.5 text-xs font-medium transition-colors sm:px-4 sm:py-2 sm:text-sm ${
+                  showQRCode
+                    ? "bg-white text-zinc-900"
+                    : "border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                }`}
+              >
+                <span className="sm:hidden">{showQRCode ? "Hide QR" : "Show QR"}</span>
+                <span className="hidden sm:inline">{showQRCode ? "Hide QR Code" : "Show QR Code"}</span>
+              </button>
+              <button
+                onClick={() => setShowUrl(!showUrl)}
+                className="rounded-lg border border-zinc-700 px-2 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 sm:px-4 sm:py-2 sm:text-sm"
+              >
+                {showUrl ? "Hide URL" : "Show URL"}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Audience Controls */}
@@ -384,11 +391,11 @@ export function PresenterView({ onExit }: PresenterViewProps) {
       )}
 
       {/* Main content */}
-      <div className="flex flex-1 gap-6 p-6">
+      <div className="flex flex-1 flex-col gap-4 p-4 sm:gap-6 sm:p-6 lg:flex-row">
         {/* Current slide preview */}
         <div className="flex flex-1 flex-col">
-          <div className="mb-3 text-sm font-medium text-zinc-500">CURRENT SLIDE</div>
-          <div className="flex-1 overflow-hidden rounded-xl border border-zinc-800">
+          <div className="mb-2 text-xs font-medium text-zinc-500 sm:mb-3 sm:text-sm">CURRENT SLIDE</div>
+          <div className="aspect-video flex-1 overflow-hidden rounded-xl border border-zinc-800 lg:aspect-auto">
             <SlideCanvas slide={currentSlide} />
           </div>
           {/* Hidden file input for upload */}
@@ -406,10 +413,10 @@ export function PresenterView({ onExit }: PresenterViewProps) {
         </div>
 
         {/* Right side: channel options */}
-        <div className="flex w-[420px] flex-col gap-4">
+        <div className="flex w-full flex-col gap-3 sm:gap-4 lg:w-[420px]">
           {/* Channel options header */}
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-zinc-500">SLIDE CHANNELS</span>
+            <span className="text-xs font-medium text-zinc-500 sm:text-sm">SLIDE CHANNELS</span>
             {mode === "stream-of-consciousness" && (
               <span className="text-xs text-purple-400">Auto-display mode</span>
             )}
@@ -498,7 +505,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
 
       {/* Exploratory input dialog */}
       {showExploratoryInput && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
           <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-4 shadow-xl">
             <h2 className="mb-2 text-sm font-semibold text-white">
               New exploratory idea

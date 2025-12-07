@@ -171,15 +171,15 @@ export default function PresentationPage() {
 
       {/* QR Code Overlay */}
       {showQRCode && audienceUrl && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-6 rounded-2xl bg-zinc-900/90 px-8 py-6 shadow-2xl backdrop-blur-sm border border-zinc-700">
-          <div className="rounded-xl bg-white p-4">
-            <QRCode value={audienceUrl} size={160} />
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 rounded-xl bg-zinc-900/90 px-4 py-4 shadow-2xl backdrop-blur-sm border border-zinc-700 sm:bottom-8 sm:flex-row sm:gap-6 sm:rounded-2xl sm:px-8 sm:py-6">
+          <div className="rounded-lg bg-white p-2 sm:rounded-xl sm:p-4">
+            <QRCode value={audienceUrl} size={100} className="h-[100px] w-[100px] sm:h-[160px] sm:w-[160px]" />
           </div>
           <div className="text-center">
-            <p className="text-2xl font-semibold text-white">
+            <p className="text-base font-semibold text-white sm:text-2xl">
               Scan to join the audience
             </p>
-            <p className="mt-2 text-lg text-zinc-400">
+            <p className="mt-1 text-sm text-zinc-400 sm:mt-2 sm:text-lg">
               Ask questions and participate
             </p>
           </div>
@@ -189,38 +189,38 @@ export default function PresentationPage() {
       {/* Floating "Ask a Question" Button */}
       <button
         onClick={() => setShowFeedbackModal(true)}
-        className="fixed bottom-6 right-6 rounded-full bg-white px-6 py-3 text-sm font-semibold text-zinc-900 shadow-lg transition-all hover:scale-105 hover:shadow-xl"
+        className="fixed bottom-4 right-4 rounded-full bg-white px-4 py-2 text-xs font-semibold text-zinc-900 shadow-lg transition-all hover:scale-105 hover:shadow-xl sm:bottom-6 sm:right-6 sm:px-6 sm:py-3 sm:text-sm"
       >
         Ask a Question
       </button>
 
       {/* Feedback Modal */}
       {showFeedbackModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg rounded-xl bg-zinc-900 p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+          <div className="w-full max-w-lg rounded-xl bg-zinc-900 p-4 shadow-2xl sm:p-6">
             {submitSuccess ? (
-              <div className="text-center">
-                <div className="mb-4 text-5xl">✓</div>
-                <h3 className="text-xl font-semibold text-green-400">Question Submitted!</h3>
-                <p className="mt-2 text-sm text-zinc-400">
+              <div className="text-center py-4">
+                <div className="mb-3 text-4xl sm:mb-4 sm:text-5xl">✓</div>
+                <h3 className="text-lg font-semibold text-green-400 sm:text-xl">Question Submitted!</h3>
+                <p className="mt-2 text-xs text-zinc-400 sm:text-sm">
                   The presenter will see your question
                 </p>
               </div>
             ) : (
               <>
-                <h3 className="mb-4 text-xl font-semibold text-white">Ask a Question</h3>
+                <h3 className="mb-3 text-lg font-semibold text-white sm:mb-4 sm:text-xl">Ask a Question</h3>
                 <textarea
                   value={feedbackText}
                   onChange={(e) => setFeedbackText(e.target.value)}
                   placeholder="Type your question here..."
-                  className="mb-4 h-32 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-white placeholder-zinc-500 focus:border-zinc-500 focus:outline-none"
+                  className="mb-3 h-28 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white placeholder-zinc-500 focus:border-zinc-500 focus:outline-none sm:mb-4 sm:h-32 sm:text-base"
                   autoFocus
                 />
-                <div className="flex gap-3">
+                <div className="flex gap-2 sm:gap-3">
                   <button
                     onClick={handleSubmitFeedback}
                     disabled={!feedbackText.trim() || isSubmitting}
-                    className="flex-1 rounded-lg bg-white px-4 py-2 font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 rounded-lg bg-white px-3 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
                   >
                     {isSubmitting ? "Submitting..." : "Submit"}
                   </button>
@@ -229,7 +229,7 @@ export default function PresentationPage() {
                       setShowFeedbackModal(false);
                       setFeedbackText("");
                     }}
-                    className="rounded-lg border border-zinc-700 px-4 py-2 font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+                    className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white sm:px-4"
                   >
                     Cancel
                   </button>
