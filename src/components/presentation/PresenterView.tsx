@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRealtimeAPI, SlideData, ChannelType } from "@/hooks/useRealtimeAPI";
 import { useFeedback } from "@/hooks/useFeedback";
+import { getAcceptedFileTypes } from "@/utils/slideConverter";
 import { SlideCanvas } from "./SlideCanvas";
 import { ChannelOption } from "./ChannelOption";
 import { UploadIcon, SparklesIcon, QuestionIcon, SlidesIcon } from "./Icons";
@@ -35,6 +36,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
     takeSlideFromChannel,
     addToAudienceChannel,
     isAnsweringQuestion,
+    createExploratoryFromPrompt,
   } = useRealtimeAPI();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -61,6 +63,10 @@ export function PresenterView({ onExit }: PresenterViewProps) {
   const [presentationWindow, setPresentationWindow] = useState<Window | null>(null);
 
   const currentSlide = slideNav.index >= 0 ? slideNav.history[slideNav.index] : null;
+
+  // Exploratory input dialog state
+  const [showExploratoryInput, setShowExploratoryInput] = useState(false);
+  const [exploratoryInput, setExploratoryInput] = useState("");
 
   // Create session on component mount
   useEffect(() => {
@@ -264,7 +270,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
                       : "border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
                   }`}
                 >
-                  {showQRCode ? "Hide QR Code" : "Show QR Code"}
+                  {showQRCode ? "Hide QR Code on presentation screen" : "Show QR Code on presentation screen"}
                 </button>
                 <button
                   onClick={() => setShowUrl(!showUrl)}
@@ -366,7 +372,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,.pdf,.pptx,.ppt,.key,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint"
+            accept={getAcceptedFileTypes()}
             multiple
             onChange={handleFileUpload}
             className="hidden"
@@ -400,7 +406,13 @@ export function PresenterView({ onExit }: PresenterViewProps) {
               onUse={() => handleUseChannelSlide("exploratory")}
               isProcessing={isProcessing}
               isRecording={isRecording}
-              emptyMessage={isRecording ? "Listening..." : "AI suggestions"}
+              emptyMessage={
+                isRecording
+                  ? "Listening for ideas..."
+                  : "Type an idea to explore"
+              }
+              onEmptyAction={() => setShowExploratoryInput(true)}
+              emptyActionLabel="New exploratory idea"
             />
 
             {/* Audience Questions Channel */}
@@ -453,6 +465,54 @@ export function PresenterView({ onExit }: PresenterViewProps) {
           </div>
         </div>
       </div>
+
+      {/* Exploratory input dialog */}
+      {showExploratoryInput && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-4 shadow-xl">
+            <h2 className="mb-2 text-sm font-semibold text-white">
+              New exploratory idea
+            </h2>
+            <p className="mb-3 text-xs text-zinc-400">
+              Describe the next concept, question, or direction you want a
+              slide for. We&apos;ll consider your current slide, uploaded
+              deck, live transcript, and audience context.
+            </p>
+            <textarea
+              value={exploratoryInput}
+              onChange={(event) => setExploratoryInput(event.target.value)}
+              className="mb-3 h-28 w-full resize-none rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+              placeholder="E.g. A slide that introduces the long-term roadmap and why it matters"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowExploratoryInput(false);
+                  setExploratoryInput("");
+                }}
+                className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!exploratoryInput.trim() || isProcessing}
+                onClick={async () => {
+                  const value = exploratoryInput.trim();
+                  if (!value) return;
+                  await createExploratoryFromPrompt(value, currentSlide);
+                  setExploratoryInput("");
+                  setShowExploratoryInput(false);
+                }}
+                className="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Generate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

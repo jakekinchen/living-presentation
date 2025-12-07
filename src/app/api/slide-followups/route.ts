@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
     const {
       currentSlide,
       presentationContext,
+      transcriptContext,
     } = body as {
       currentSlide?: {
         headline?: string;
@@ -27,6 +28,7 @@ export async function POST(request: NextRequest) {
         source?: string;
       };
       presentationContext?: string;
+      transcriptContext?: string;
     };
 
     if (!currentSlide || !currentSlide.headline) {
@@ -54,8 +56,12 @@ export async function POST(request: NextRequest) {
 
     const slideCategory = currentSlide.category || "concept";
 
-    const contextInfo = presentationContext
+    const slideContextInfo = presentationContext
       ? `\n\nRECENT PRESENTATION CONTEXT (previous slides):\n${presentationContext}`
+      : "";
+
+    const transcriptInfo = transcriptContext
+      ? `\n\nLIVE TRANSCRIPT CONTEXT (recent speaker narration):\n${transcriptContext}`
       : "";
 
     const prompt = `You are helping a presenter extend an existing slide deck.
@@ -63,7 +69,7 @@ export async function POST(request: NextRequest) {
 CURRENT SLIDE (shown right now):
 - Headline: ${currentSlide.headline}
 ${currentSlide.subheadline ? `- Subheadline: ${currentSlide.subheadline}` : ""}${bulletsText}${visualText}
-- Category: ${slideCategory}${contextInfo}
+- Category: ${slideCategory}${slideContextInfo}${transcriptInfo}
 
 Your job is to propose 1-2 HIGH-VALUE NEXT SLIDES that would logically follow from the current slide. These slides should:
 - Deepen the idea, provide concrete examples, or introduce a simple framework
@@ -139,4 +145,3 @@ Limit to at most 2 follow-up slides.`;
     );
   }
 }
-

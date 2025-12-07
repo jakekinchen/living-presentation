@@ -235,13 +235,6 @@ export function useRealtimeAPI() {
   // do have an uploaded deck and want ideas for "what could come next".
   const generateSlideFollowups = useCallback(
     async (slide: SlideData) => {
-      // Only generate follow-ups when we're not actively listening to audio.
-      // When the mic is live, the exploratory channel is driven by the transcript.
-      if (isConnected || isRecording) return;
-
-      // Focus this behavior on uploaded / deck slides
-      if (slide.source !== "slides") return;
-
       const headline =
         slide.headline || slide.originalIdea?.title || "Untitled slide";
       const visualDescription =
@@ -269,6 +262,7 @@ export function useRealtimeAPI() {
                   `${index + 1}. ${s.headline}: ${s.visualDescription}`
               )
               .join("\n"),
+            transcriptContext: fullTranscriptRef.current || "",
           }),
         });
 
@@ -361,6 +355,117 @@ export function useRealtimeAPI() {
       }
     },
     [generateSlideImage]
+  );
+
+  // Generate exploratory slides based on an explicit presenter prompt.
+  // This blends the typed idea with current slide, slide history, uploaded deck,
+  // audience signals, and any available transcript.
+  const createExploratoryFromPrompt = useCallback(
+    async (prompt: string, currentSlide: SlideData | null) => {
+      const trimmed = prompt.trim();
+      if (!trimmed) return;
+
+      setIsProcessing(true);
+
+      try {
+        const lastAccepted =
+          acceptedSlidesRef.current[acceptedSlidesRef.current.length - 1] ||
+          null;
+
+        const slideHistoryContext = acceptedSlidesRef.current
+          .map(
+            (s, index) =>
+              `${index + 1}. ${s.headline}: ${s.visualDescription}`
+          )
+          .join("\n");
+
+        const uploadedSlidesContext = slidesChannel.queue
+          .slice(0, 5)
+          .map((s, index) => {
+            const title = s.headline || s.originalIdea?.title || "Slide";
+            const desc =
+              s.visualDescription || s.originalIdea?.content || "";
+            return `Uploaded ${index + 1}: ${title} — ${desc}`;
+          })
+          .join("\n");
+
+        const audienceContext = audienceChannel.queue
+          .slice(0, 5)
+          .map((s, index) => {
+            const title = s.headline || s.originalIdea?.title || "Audience";
+            const desc =
+              s.visualDescription || s.originalIdea?.content || "";
+            return `Audience ${index + 1}: ${title} — ${desc}`;
+          })
+          .join("\n");
+
+        const slideForContext: SlideData | null =
+          currentSlide ||
+          (lastAccepted
+            ? {
+                id: lastAccepted.id,
+                headline: lastAccepted.headline,
+                visualDescription: lastAccepted.visualDescription,
+              }
+            : null);
+
+        const response = await fetch("/api/exploratory-input", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: trimmed,
+            currentSlide: slideForContext
+              ? {
+                  headline: slideForContext.headline,
+                  subheadline: slideForContext.subheadline,
+                  bullets: slideForContext.bullets,
+                  visualDescription:
+                    slideForContext.visualDescription ||
+                    slideForContext.originalIdea?.content,
+                  category:
+                    slideForContext.originalIdea?.category ||
+                    (lastAccepted ? lastAccepted.category : "concept"),
+                }
+              : null,
+            transcriptContext: fullTranscriptRef.current || "",
+            slideHistoryContext,
+            uploadedSlidesContext,
+            audienceContext,
+          }),
+        });
+
+        if (!response.ok) {
+          console.error(
+            "Failed to generate exploratory slides from prompt:",
+            await response.text()
+          );
+          return;
+        }
+
+        const data = await response.json();
+        const followups = (data.followups || []) as FollowupSlideContent[];
+        if (!followups.length) return;
+
+        for (const followup of followups) {
+          await generateSlideImage({
+            headline: followup.headline,
+            subheadline: followup.subheadline,
+            bullets: followup.bullets,
+            visualDescription: followup.visualDescription,
+            category: followup.category,
+            sourceTranscript: `Presenter prompt: "${trimmed}"`,
+          });
+        }
+      } catch (err) {
+        console.error(
+          "Error generating exploratory slides from prompt:",
+          err
+        );
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [generateSlideImage, slidesChannel.queue, audienceChannel.queue]
   );
 
   // Record an accepted slide for context in future gate calls
@@ -626,5 +731,6 @@ export function useRealtimeAPI() {
     takeSlideFromChannel,
     addToAudienceChannel,
     isAnsweringQuestion,
+    createExploratoryFromPrompt,
   };
 }
