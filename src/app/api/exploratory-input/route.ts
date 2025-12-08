@@ -1,7 +1,4 @@
-import {
-  DynamicRetrievalMode,
-  GoogleGenerativeAI,
-} from "@google/generative-ai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
 
 interface ExploratorySlide {
@@ -58,15 +55,6 @@ export async function POST(request: NextRequest) {
       generationConfig: {
         responseMimeType: "application/json",
       },
-      tools: [
-        {
-          googleSearchRetrieval: {
-            dynamicRetrievalConfig: {
-              mode: DynamicRetrievalMode.MODE_DYNAMIC,
-            },
-          },
-        },
-      ],
     });
 
     const slideContext = currentSlide
@@ -104,7 +92,38 @@ ${uploadedSlidesContext}`
 ${audienceContext}`
       : "";
 
-    const systemPrompt = `You are an exploratory presentation assistant.
+    // Detect if this is the first slide (no history, no current slide)
+    const isFirstSlide = !currentSlide && !slideHistoryContext?.trim();
+
+    const introSlidePrompt = `You are a presentation title slide designer.
+
+The PRESENTER wants to start a presentation about:
+"${trimmedPrompt}"
+
+Your job is to create ONE compelling INTRO/TITLE SLIDE that:
+- Has a powerful, concise title (3-7 words) that captures the essence of the topic
+- Has an engaging subtitle that hints at what the presentation will cover
+- Does NOT have any bullet points (this is a title slide)
+- Has a visualDescription for a dramatic, professional title slide background image related to the topic
+
+The intro slide should feel like the opening of a TED talk - bold, intriguing, and visually striking.
+
+Respond with a JSON object of the form:
+{
+  "followups": [
+    {
+      "headline": "The powerful title",
+      "subheadline": "An engaging subtitle",
+      "bullets": [],
+      "visualDescription": "A dramatic visual description for the title slide background - abstract, professional, evocative of the topic",
+      "category": "intro"
+    }
+  ]
+}
+
+Return ONLY ONE slide. DO NOT wrap the JSON in markdown.`;
+
+    const followUpSlidePrompt = `You are an exploratory presentation assistant.
 
 The PRESENTER has just typed the following idea or direction they want to explore next:
 "${trimmedPrompt}"
@@ -139,6 +158,8 @@ Respond with a JSON object of the form:
 }
 
 Limit to at most 2 slides and DO NOT wrap the JSON in markdown.`;
+
+    const systemPrompt = isFirstSlide ? introSlidePrompt : followUpSlidePrompt;
 
     const result = await model.generateContent(systemPrompt);
     const response = result.response;
