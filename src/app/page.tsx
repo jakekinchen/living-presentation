@@ -150,125 +150,6 @@ function SlideCanvas({ slide, isFullscreen = false }: { slide: SlideData | null;
   );
 }
 
-// Next slide preview
-function NextSlidePreview({
-  slide,
-  onAccept,
-  onSkip,
-}: {
-  slide: SlideData;
-  onAccept: () => void;
-  onSkip: () => void;
-}) {
-  if (slide.imageUrl) {
-    return (
-      <div className="flex flex-col gap-3">
-        <div className="aspect-video overflow-hidden rounded-xl border border-canvas-700 bg-black">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={slide.imageUrl}
-            alt="Slide Preview"
-            className="h-full w-full object-contain"
-          />
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={onAccept}
-            className="flex-1 rounded-lg bg-coral-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-coral-600"
-          >
-            Use This Slide
-          </button>
-          <button
-            onClick={onSkip}
-            className="rounded-lg border border-canvas-700 px-4 py-2 text-sm font-medium text-canvas-400 transition-colors hover:bg-canvas-800/30 hover:text-white"
-          >
-            Skip
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Special template preview for audience question slides
-  if (slide.source === "question") {
-    return (
-      <div className="flex flex-col gap-3">
-        <div className="aspect-video overflow-hidden rounded-xl border border-canvas-700 bg-gradient-to-br from-coral-500 via-coral-600 to-coral-700">
-          <div className="flex h-full flex-col items-center justify-center p-4">
-            {/* Question Icon and Label */}
-            <div className="mb-2 flex items-center gap-2">
-              <svg className="h-6 w-6 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="text-xs font-semibold uppercase tracking-wider text-white/90">
-                Audience Question
-              </span>
-            </div>
-            {/* Question Text */}
-            <div className="rounded-lg border-2 border-coral-300 bg-warmslate-50 px-4 py-3">
-              <p className="line-clamp-3 text-center text-sm font-bold leading-tight text-canvas-900">
-                {slide.headline}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={onAccept}
-            className="flex-1 rounded-lg bg-coral-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-coral-600"
-          >
-            Use This Slide
-          </button>
-          <button
-            onClick={onSkip}
-            className="rounded-lg border border-canvas-700 px-4 py-2 text-sm font-medium text-canvas-400 transition-colors hover:bg-canvas-800/30 hover:text-white"
-          >
-            Skip
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const bgClass = getBgClass(slide.backgroundColor || "zinc");
-  const bgStyle = getBgStyle(slide.backgroundColor || "zinc");
-  const isLight = isLightColor(slide.backgroundColor || "zinc");
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div
-        className={`aspect-video overflow-hidden rounded-xl border border-canvas-700 ${bgClass}`}
-        style={bgStyle}
-      >
-        <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-          <h3 className={`text-lg font-bold leading-tight ${isLight ? "text-canvas-900" : "text-white"}`}>
-            {slide.headline}
-          </h3>
-          {slide.subheadline && (
-            <p className={`mt-2 text-sm ${isLight ? "text-canvas-600" : "text-canvas-400"}`}>
-              {slide.subheadline}
-            </p>
-          )}
-        </div>
-      </div>
-      <div className="flex gap-2">
-        <button
-          onClick={onAccept}
-          className="flex-1 rounded-lg bg-coral-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-coral-600"
-        >
-          Use This Slide
-        </button>
-        <button
-          onClick={onSkip}
-          className="rounded-lg border border-canvas-700 px-4 py-2 text-sm font-medium text-canvas-400 transition-colors hover:bg-canvas-800/30 hover:text-white"
-        >
-          Skip
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // Splash screen
 function SplashScreen({ onStart }: { onStart: () => void }) {
   return (
@@ -308,7 +189,6 @@ function PresenterView({ onExit }: { onExit: () => void }) {
     isProcessing,
     pendingSlides,
     error,
-    transcript,
     start,
     stop,
     removeSlide,
@@ -359,14 +239,6 @@ function PresenterView({ onExit }: { onExit: () => void }) {
       }
     }
   };
-
-  // Separate pending slides by source
-  const voiceSlides = pendingSlides.filter((s) => s.source === "voice");
-  const questionSlides = pendingSlides.filter((s) => s.source === "question");
-
-  // Get the next pending slides
-  const nextVoiceSlide = voiceSlides[0] || null;
-  const nextQuestionSlide = questionSlides[0] || null;
 
   // Create session on component mount
   useEffect(() => {
@@ -589,93 +461,70 @@ function PresenterView({ onExit }: { onExit: () => void }) {
         </div>
       )}
 
-      {/* Main content */}
-      <div className="flex flex-1 gap-6 p-6">
-        {/* Current slide preview */}
-        <div className="flex flex-1 flex-col">
-          <div className="mb-3 text-sm font-medium uppercase tracking-wider text-canvas-500">CURRENT SLIDE</div>
-          <div className="flex-1 overflow-hidden rounded-xl border border-canvas-800">
-            <SlideCanvas slide={currentSlide} />
-          </div>
-        </div>
-
-        {/* Right side: next slides + transcript */}
-        <div className="flex w-80 flex-col gap-6">
-          {/* Next Voice Slide */}
-          <div>
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium uppercase tracking-wider text-canvas-500">
-                NEXT VOICE SLIDE {voiceSlides.length > 1 && `(${voiceSlides.length} queued)`}
-              </span>
-            </div>
-
-            {nextVoiceSlide ? (
-              <NextSlidePreview
-                slide={nextVoiceSlide}
-                onAccept={() => acceptSlide(nextVoiceSlide)}
-                onSkip={() => skipSlide(nextVoiceSlide.id)}
-              />
-            ) : (
-              <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed border-canvas-800 text-canvas-600">
-                {isRecording ? (
-                  <div className="text-center">
-                    <div className="mb-2 animate-pulse text-2xl">...</div>
-                    <p className="text-sm">Listening for ideas</p>
-                  </div>
-                ) : (
-                  <p className="text-sm">Start recording to capture slides</p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Next Question Slide */}
-          <div>
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium uppercase tracking-wider text-canvas-500">
-                NEXT QUESTION SLIDE {questionSlides.length > 1 && `(${questionSlides.length} queued)`}
-              </span>
-            </div>
-
-            {nextQuestionSlide ? (
-              <NextSlidePreview
-                slide={nextQuestionSlide}
-                onAccept={() => acceptSlide(nextQuestionSlide)}
-                onSkip={() => skipSlide(nextQuestionSlide.id)}
-              />
-            ) : (
-              <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed border-canvas-800 text-canvas-600">
-                <p className="text-sm">No question slides yet</p>
-              </div>
-            )}
-          </div>
-
-          {/* Live transcript */}
-          <div className="overflow-hidden rounded-xl border border-canvas-800 bg-canvas-900/50">
-            <div className="border-b border-canvas-800 px-4 py-2">
-              <span className="text-xs font-medium uppercase tracking-wider text-canvas-600">
-                {isRecording ? "Recording New Slide..." : "Slide Description"}
-              </span>
-            </div>
-            <div className="p-4">
-              {transcript ? (
-                <p className="text-sm text-canvas-400">{transcript}</p>
-              ) : (
-                <p className="text-sm italic text-canvas-700">
-                  {isRecording
-                    ? "Describe your new slide idea..."
-                    : "Click 'Record New Slide' to describe a new slide idea"}
-                </p>
+      {/* Main content - split into main area and queue */}
+      <div className="flex flex-1 flex-col gap-4 p-6">
+        {/* Top: Main slide navigation area */}
+        <div className="flex flex-1 gap-4">
+          {/* Previous Slides - 2 slides stacked horizontally */}
+          <div className="flex w-48 flex-col gap-2">
+            <div className="text-xs font-medium uppercase tracking-wider text-canvas-500">Previous Slide</div>
+            <div className="flex flex-1 flex-col gap-2">
+              {slideNav.index >= 2 && (
+                <div className="flex-1 overflow-hidden rounded-lg border border-canvas-800">
+                  <SlideCanvas slide={slideNav.history[slideNav.index - 2]} />
+                </div>
+              )}
+              {slideNav.index >= 1 && (
+                <div className="flex-1 overflow-hidden rounded-lg border border-canvas-800">
+                  <SlideCanvas slide={slideNav.history[slideNav.index - 1]} />
+                </div>
+              )}
+              {slideNav.index < 1 && (
+                <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-canvas-800 text-canvas-700">
+                  <p className="text-xs">No previous slides</p>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Audience Questions */}
-          <div className="flex-1 overflow-hidden rounded-xl border border-canvas-800 bg-canvas-900/50">
+          {/* Current Slide - Large center display */}
+          <div className="flex flex-1 flex-col">
+            <div className="mb-2 text-sm font-medium uppercase tracking-wider text-canvas-500">Current Slide</div>
+            <div className="flex-1 overflow-hidden rounded-xl border-2 border-coral-500/50">
+              <SlideCanvas slide={currentSlide} />
+            </div>
+          </div>
+
+          {/* Next Slides - 2 slides stacked horizontally */}
+          <div className="flex w-48 flex-col gap-2">
+            <div className="text-xs font-medium uppercase tracking-wider text-canvas-500">Next Slide</div>
+            <div className="flex flex-1 flex-col gap-2">
+              {pendingSlides.length > 0 && (
+                <div className="flex-1 overflow-hidden rounded-lg border border-canvas-800">
+                  <SlideCanvas slide={pendingSlides[0]} />
+                </div>
+              )}
+              {pendingSlides.length > 1 && (
+                <div className="flex-1 overflow-hidden rounded-lg border border-canvas-800">
+                  <SlideCanvas slide={pendingSlides[1]} />
+                </div>
+              )}
+              {pendingSlides.length === 0 && (
+                <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-canvas-800 text-canvas-700">
+                  <p className="text-center text-xs">
+                    {isRecording ? "Listening..." : "No slides queued"}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Audience Feedback - Vertical sidebar on the right */}
+          <div className="flex w-64 flex-col overflow-hidden rounded-xl border border-canvas-800 bg-canvas-900/50">
             <div className="border-b border-canvas-800 px-4 py-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium uppercase tracking-wider text-canvas-600">
-                  Audience Questions
+                  Audience Feedback
                 </span>
                 {unreadCount > 0 && (
                   <span className="rounded-full bg-coral-500 px-2 py-0.5 text-xs font-semibold text-white">
@@ -684,7 +533,7 @@ function PresenterView({ onExit }: { onExit: () => void }) {
                 )}
               </div>
             </div>
-            <div className="max-h-64 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4">
               {feedback.length === 0 ? (
                 <p className="text-sm italic text-canvas-700">
                   No questions yet. Share the audience URL above.
@@ -697,21 +546,21 @@ function PresenterView({ onExit }: { onExit: () => void }) {
                       className="rounded-lg border border-canvas-700 bg-canvas-800/50 p-3"
                     >
                       <p className="mb-2 text-sm text-canvas-300">{item.text}</p>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-col gap-2">
                         <button
                           onClick={() => handleGenerateSlide(item.id, item.text)}
                           disabled={isProcessing}
-                          className="rounded-lg bg-coral-500 px-3 py-1 text-xs font-semibold text-white transition-all duration-200 hover:bg-coral-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="w-full rounded-lg bg-coral-500 px-3 py-1.5 text-xs font-semibold text-white transition-all duration-200 hover:bg-coral-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Generate Slide
                         </button>
                         <button
                           onClick={() => dismissFeedback(item.id)}
-                          className="rounded border border-canvas-600 px-3 py-1 text-xs font-medium text-canvas-400 transition-colors hover:bg-canvas-700 hover:text-white"
+                          className="w-full rounded border border-canvas-600 px-3 py-1.5 text-xs font-medium text-canvas-400 transition-colors hover:bg-canvas-700 hover:text-white"
                         >
                           Dismiss
                         </button>
-                        <span className="ml-auto text-xs text-canvas-600">
+                        <span className="text-xs text-canvas-600">
                           {new Date(item.timestamp).toLocaleTimeString()}
                         </span>
                       </div>
@@ -720,6 +569,59 @@ function PresenterView({ onExit }: { onExit: () => void }) {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* Bottom: Queue of generated slides */}
+        <div className="overflow-hidden rounded-xl border border-canvas-800 bg-canvas-900/50">
+          <div className="border-b border-canvas-800 px-4 py-2">
+            <span className="text-xs font-medium uppercase tracking-wider text-canvas-600">
+              Queue of generated Slides (left to right oldest to newest)
+            </span>
+          </div>
+          <div className="overflow-x-auto p-4">
+            {pendingSlides.length === 0 ? (
+              <p className="text-center text-sm italic text-canvas-700">
+                {isRecording ? "Listening for new slides..." : "No slides in queue"}
+              </p>
+            ) : (
+              <div className="flex gap-3">
+                {pendingSlides.map((slide) => (
+                  <div
+                    key={slide.id}
+                    className="group relative w-48 flex-shrink-0"
+                  >
+                    <div className="aspect-video overflow-hidden rounded-lg border border-canvas-700 bg-canvas-800">
+                      <SlideCanvas slide={slide} />
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={() => acceptSlide(slide)}
+                        className="flex-1 rounded bg-coral-500 px-2 py-1 text-xs font-semibold text-white transition-all duration-200 hover:bg-coral-600"
+                      >
+                        Use
+                      </button>
+                      <button
+                        onClick={() => skipSlide(slide.id)}
+                        className="rounded border border-canvas-600 px-2 py-1 text-xs font-medium text-canvas-400 transition-colors hover:bg-canvas-700 hover:text-white"
+                      >
+                        Skip
+                      </button>
+                    </div>
+                    {/* Source badge */}
+                    <div className="absolute right-2 top-2">
+                      <span className={`rounded px-2 py-0.5 text-xs font-medium ${
+                        slide.source === "question"
+                          ? "bg-coral-500/80 text-white"
+                          : "bg-canvas-800/80 text-canvas-300"
+                      }`}>
+                        {slide.source === "question" ? "Q" : "V"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
