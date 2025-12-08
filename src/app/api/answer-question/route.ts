@@ -1,7 +1,5 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, DynamicRetrievalMode } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
-
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 
 interface AnswerResponse {
   headline: string;
@@ -14,6 +12,14 @@ interface AnswerResponse {
 
 export async function POST(request: NextRequest) {
   try {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "Missing GOOGLE_API_KEY environment variable" },
+        { status: 500 }
+      );
+    }
+    const genAI = new GoogleGenerativeAI(apiKey);
     const body = await request.json();
     const { question, presentationContext } = body;
 
@@ -29,6 +35,15 @@ export async function POST(request: NextRequest) {
       generationConfig: {
         responseMimeType: "application/json",
       },
+      tools: [
+        {
+          googleSearchRetrieval: {
+            dynamicRetrievalConfig: {
+              mode: DynamicRetrievalMode.MODE_DYNAMIC,
+            },
+          },
+        },
+      ],
     });
 
     const contextInfo = presentationContext
@@ -43,6 +58,8 @@ ${contextInfo}
 Your task is to:
 1. Provide a clear, helpful answer to this question
 2. Format it as a presentation slide that ANSWERS the question (not just restates it)
+
+You can use Google Search to ground your answer in accurate, up-to-date information when the question involves facts, statistics, recent events, or topics where accuracy is critical. Use search when it will add important, specific, and directly relevant facts to your answer.
 
 IMPORTANT: The slide should contain the ANSWER, not the question. The headline should be the key insight or answer.
 
