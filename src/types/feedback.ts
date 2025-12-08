@@ -2,6 +2,7 @@ export interface Session {
   id: string;
   createdAt: string;
   expiresAt: string;
+  presenterToken: string;
 }
 
 export interface Feedback {

@@ -57,7 +57,8 @@ export function useRealtimeAPI() {
   const [transcript, setTranscript] = useState<string>("");
   const [fullTranscript, setFullTranscript] = useState<string>("");
   const [isGenerationPaused, setIsGenerationPaused] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingCount, setProcessingCount] = useState(0);
+  const isProcessing = processingCount > 0;
   const [mode, setMode] = useState<PresentationMode>("gated");
   const [gateStatus, setGateStatus] = useState<string>("");
   const [curatorStatus, setCuratorStatus] = useState<string>("");
@@ -76,10 +77,15 @@ export function useRealtimeAPI() {
   const lastGateCheckRef = useRef<string>("");
   const isGatingRef = useRef<boolean>(false);
   const modeRef = useRef<PresentationMode>(mode);
+  const gateDebounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const priorIdeasRef = useRef<{ title: string; content: string; category: string }[]>([]);
   const acceptedSlidesRef = useRef<SlideHistoryEntry[]>([]);
   const styleReferencesRef = useRef<StyleReference[]>([]);
   const slideCounterRef = useRef<number>(0);
+  const sessionAuthRef = useRef<{ sessionId: string | null; presenterToken: string | null }>({
+    sessionId: null,
+    presenterToken: null,
+  });
   const { isUploadingSlides, uploadProgress, uploadSlides } = useSlideUploads({
     appendSlidesToSlidesChannel,
     styleReferencesRef,
@@ -106,6 +112,26 @@ export function useRealtimeAPI() {
     presenterPrompts: [],
   });
   const EXPLORATORY_INTERVAL_MS = 20000;
+  const GATE_DEBOUNCE_MS = 900;
+
+  const withProcessing = useCallback(
+    async <T,>(fn: () => Promise<T>): Promise<T> => {
+      setProcessingCount((count) => count + 1);
+      try {
+        return await fn();
+      } finally {
+        setProcessingCount((count) => Math.max(0, count - 1));
+      }
+    },
+    []
+  );
+
+  const setSessionAuth = useCallback(
+    (sessionId: string | null, presenterToken: string | null) => {
+      sessionAuthRef.current = { sessionId, presenterToken };
+    },
+    []
+  );
 
   // Generate slide image from structured content (used in gated mode)
   const generateSlideImage = useCallback(
@@ -115,40 +141,39 @@ export function useRealtimeAPI() {
         return;
       }
       console.log("Generating slide image:", slideContent);
-      setIsProcessing(true);
 
-      // Increment slide counter for this new slide
-      slideCounterRef.current += 1;
-      const currentSlideNumber = slideCounterRef.current;
+      await withProcessing(async () => {
+        // Increment slide counter for this new slide
+        slideCounterRef.current += 1;
+        const currentSlideNumber = slideCounterRef.current;
 
-      try {
-        const response = await fetch("/api/gemini", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            slideContent,
-            styleReferences: styleReferencesRef.current,
-            slideNumber: currentSlideNumber,
-          }),
-        });
+        try {
+          const response = await fetch("/api/gemini", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              slideContent,
+              styleReferences: styleReferencesRef.current,
+              slideNumber: currentSlideNumber,
+            }),
+          });
 
-        if (response.ok) {
-          const data = await response.json();
-          console.log("Slide generated:", data);
-          if (data.slide) {
-            // Add to exploratory channel queue
-            addToExploratoryChannel(data.slide);
+          if (response.ok) {
+            const data = await response.json();
+            console.log("Slide generated:", data.slide?.id || "unknown");
+            if (data.slide) {
+              // Add to exploratory channel queue
+              addToExploratoryChannel(data.slide);
+            }
+          } else {
+            console.error("Gemini API error:", await response.text());
           }
-        } else {
-          console.error("Gemini API error:", await response.text());
+        } catch (err) {
+          console.error("Failed to generate slide:", err);
         }
-      } catch (err) {
-        console.error("Failed to generate slide:", err);
-      } finally {
-        setIsProcessing(false);
-      }
+      });
     },
-    [addToExploratoryChannel]
+    [addToExploratoryChannel, withProcessing]
   );
 
   // Check with the gate if we should create a slide (gated mode)
@@ -216,42 +241,40 @@ export function useRealtimeAPI() {
         return;
       }
       console.log("Processing idea (stream mode):", { title, content, category });
-      setIsProcessing(true);
+      await withProcessing(async () => {
+        // Increment slide counter for this new slide
+        slideCounterRef.current += 1;
+        const currentSlideNumber = slideCounterRef.current;
 
-      // Increment slide counter for this new slide
-      slideCounterRef.current += 1;
-      const currentSlideNumber = slideCounterRef.current;
+        try {
+          const response = await fetch("/api/gemini", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title,
+              content,
+              category,
+              styleReferences: styleReferencesRef.current,
+              slideNumber: currentSlideNumber,
+            }),
+          });
 
-      try {
-        const response = await fetch("/api/gemini", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title,
-            content,
-            category,
-            styleReferences: styleReferencesRef.current,
-            slideNumber: currentSlideNumber,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log("Gemini response:", data);
-          if (data.slide) {
-            // In stream mode, auto-accept the slide directly
-            setAutoAcceptedSlide(data.slide);
+          if (response.ok) {
+            const data = await response.json();
+            console.log("Gemini response:", data);
+            if (data.slide) {
+              // In stream mode, auto-accept the slide directly
+              setAutoAcceptedSlide(data.slide);
+            }
+          } else {
+            console.error("Gemini API error:", await response.text());
           }
-        } else {
-          console.error("Gemini API error:", await response.text());
+        } catch (err) {
+          console.error("Failed to generate slide:", err);
         }
-      } catch (err) {
-      console.error("Failed to generate slide:", err);
-      } finally {
-        setIsProcessing(false);
-      }
+      });
     },
-    []
+    [withProcessing]
   );
 
   // Consolidate pending exploratory triggers into a single generation run with all fresh context.
@@ -342,110 +365,108 @@ export function useRealtimeAPI() {
         acceptedSlidesRef.current[acceptedSlidesRef.current.length - 1] ||
         null;
 
-      setIsProcessing(true);
+      return await withProcessing(async () => {
+        try {
+          const response = await fetch("/api/exploratory-input", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: combinedPrompt,
+              currentSlide: slideForContext
+                ? {
+                    headline: slideForContext.headline,
+                    subheadline: slideForContext.subheadline,
+                    bullets: slideForContext.bullets,
+                    visualDescription:
+                      slideForContext.visualDescription ||
+                      slideForContext.originalIdea?.content,
+                    category:
+                      slideForContext.originalIdea?.category || "concept",
+                  }
+                : null,
+              transcriptContext: fullTranscriptRef.current || "",
+              slideHistoryContext,
+              uploadedSlidesContext,
+              audienceContext,
+            }),
+          });
 
-      try {
-        const response = await fetch("/api/exploratory-input", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: combinedPrompt,
-            currentSlide: slideForContext
-              ? {
-                  headline: slideForContext.headline,
-                  subheadline: slideForContext.subheadline,
-                  bullets: slideForContext.bullets,
-                  visualDescription:
-                    slideForContext.visualDescription ||
-                    slideForContext.originalIdea?.content,
-                  category:
-                    slideForContext.originalIdea?.category || "concept",
-                }
-              : null,
-            transcriptContext: fullTranscriptRef.current || "",
-            slideHistoryContext,
-            uploadedSlidesContext,
-            audienceContext,
-          }),
-        });
+          if (!response.ok) {
+            console.error(
+              "Failed to generate exploratory slides:",
+              await response.text()
+            );
+            return false;
+          }
 
-        if (!response.ok) {
-          console.error(
-            "Failed to generate exploratory slides:",
-            await response.text()
-          );
+          const data = await response.json();
+          const followups = (data.followups || []) as FollowupSlideContent[];
+          let cleanedFollowups = followups
+            .filter((f) => f && typeof f.headline === "string")
+            .slice(0, 1);
+
+          if (!cleanedFollowups.length) {
+            const fallbackHeadline =
+              latestPrompt?.prompt?.slice(0, 60) ||
+              acceptedSlides[acceptedSlides.length - 1]?.headline ||
+              audienceQuestions[audienceQuestions.length - 1]?.headline ||
+              "Next slide idea";
+            cleanedFollowups = [
+              {
+                headline: fallbackHeadline || "Next slide idea",
+                subheadline:
+                  latestPrompt?.prompt ||
+                  "Exploratory slide based on recent context",
+                bullets: [
+                  "Synthesized from presenter intent and recent context",
+                  "Generated as a fallback when no slide suggestions returned",
+                ],
+                visualDescription:
+                  latestPrompt?.prompt ||
+                  "A visual that extends the conversation using recent slides and audience signals",
+                category:
+                  acceptedSlides[acceptedSlides.length - 1]?.category ||
+                  "concept",
+              },
+            ];
+          }
+
+          const sourceTranscriptParts: string[] = [];
+          if (latestPrompt) {
+            sourceTranscriptParts.push(`Presenter prompt: "${latestPrompt.prompt}"`);
+          }
+          if (acceptedSlides.length) {
+            sourceTranscriptParts.push(
+              `Follow-ups requested for ${acceptedSlides.length} accepted slide(s)`
+            );
+          }
+          if (audienceQuestions.length) {
+            sourceTranscriptParts.push(
+              `Audience signals/questions x${audienceQuestions.length}`
+            );
+          }
+          const sourceTranscript =
+            sourceTranscriptParts.join(" | ") ||
+            "Exploratory generation based on recent context";
+
+          for (const followup of cleanedFollowups) {
+            await generateSlideImage({
+              headline: followup.headline,
+              subheadline: followup.subheadline,
+              bullets: followup.bullets,
+              visualDescription: followup.visualDescription,
+              category: followup.category,
+              sourceTranscript,
+            });
+          }
+          return true;
+        } catch (err) {
+          console.error("Error generating exploratory slides from context:", err);
           return false;
         }
-
-        const data = await response.json();
-        const followups = (data.followups || []) as FollowupSlideContent[];
-        let cleanedFollowups = followups
-          .filter((f) => f && typeof f.headline === "string")
-          .slice(0, 1);
-
-        if (!cleanedFollowups.length) {
-          const fallbackHeadline =
-            latestPrompt?.prompt?.slice(0, 60) ||
-            acceptedSlides[acceptedSlides.length - 1]?.headline ||
-            audienceQuestions[audienceQuestions.length - 1]?.headline ||
-            "Next slide idea";
-          cleanedFollowups = [
-            {
-              headline: fallbackHeadline || "Next slide idea",
-              subheadline:
-                latestPrompt?.prompt ||
-                "Exploratory slide based on recent context",
-              bullets: [
-                "Synthesized from presenter intent and recent context",
-                "Generated as a fallback when no slide suggestions returned",
-              ],
-              visualDescription:
-                latestPrompt?.prompt ||
-                "A visual that extends the conversation using recent slides and audience signals",
-              category:
-                acceptedSlides[acceptedSlides.length - 1]?.category ||
-                "concept",
-            },
-          ];
-        }
-
-        const sourceTranscriptParts: string[] = [];
-        if (latestPrompt) {
-          sourceTranscriptParts.push(`Presenter prompt: "${latestPrompt.prompt}"`);
-        }
-        if (acceptedSlides.length) {
-          sourceTranscriptParts.push(
-            `Follow-ups requested for ${acceptedSlides.length} accepted slide(s)`
-          );
-        }
-        if (audienceQuestions.length) {
-          sourceTranscriptParts.push(
-            `Audience signals/questions x${audienceQuestions.length}`
-          );
-        }
-        const sourceTranscript =
-          sourceTranscriptParts.join(" | ") ||
-          "Exploratory generation based on recent context";
-
-        for (const followup of cleanedFollowups) {
-          await generateSlideImage({
-            headline: followup.headline,
-            subheadline: followup.subheadline,
-            bullets: followup.bullets,
-            visualDescription: followup.visualDescription,
-            category: followup.category,
-            sourceTranscript,
-          });
-        }
-        return true;
-      } catch (err) {
-        console.error("Error generating exploratory slides from context:", err);
-        return false;
-      } finally {
-        setIsProcessing(false);
-      }
+      });
     },
-    [audienceChannel.queue, generateSlideImage, slidesChannel.queue]
+    [audienceChannel.queue, generateSlideImage, slidesChannel.queue, withProcessing]
   );
 
   const triggerExploratoryGeneration = useCallback(
@@ -612,6 +633,9 @@ export function useRealtimeAPI() {
       if (exploratoryGenerationTimeoutRef.current) {
         clearTimeout(exploratoryGenerationTimeoutRef.current);
       }
+      if (gateDebounceTimeoutRef.current) {
+        clearTimeout(gateDebounceTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -666,12 +690,22 @@ export function useRealtimeAPI() {
   const start = useCallback(async () => {
     if (connectionRef.current) return;
 
+    const { sessionId, presenterToken } = sessionAuthRef.current;
+    if (!sessionId || !presenterToken) {
+      setError("Session not ready. Please wait for session creation to finish.");
+      return;
+    }
+
     setError(null);
 
     let key: string | undefined;
 
     try {
-      const response = await fetch("/api/deepgram-key");
+      const response = await fetch(`/api/deepgram-key?sessionId=${encodeURIComponent(sessionId)}`, {
+        headers: {
+          Authorization: `Bearer ${presenterToken}`,
+        },
+      });
       if (!response.ok) {
         const errorData = (await response.json().catch(() => null)) as
           | { error?: string }
@@ -777,7 +811,12 @@ export function useRealtimeAPI() {
             // First slide (intro) needs even less content to trigger
             const threshold = acceptedSlidesRef.current.length === 0 ? 20 : 30;
             if (fullTranscriptRef.current.length > threshold) {
-              void checkSlideGate(fullTranscriptRef.current);
+              if (gateDebounceTimeoutRef.current) {
+                clearTimeout(gateDebounceTimeoutRef.current);
+              }
+              gateDebounceTimeoutRef.current = setTimeout(() => {
+                void checkSlideGate(fullTranscriptRef.current);
+              }, GATE_DEBOUNCE_MS);
             }
           } else {
             // Stream-of-consciousness mode: generate slide immediately
@@ -824,6 +863,10 @@ export function useRealtimeAPI() {
     if (exploratoryGenerationTimeoutRef.current) {
       clearTimeout(exploratoryGenerationTimeoutRef.current);
       exploratoryGenerationTimeoutRef.current = null;
+    }
+    if (gateDebounceTimeoutRef.current) {
+      clearTimeout(gateDebounceTimeoutRef.current);
+      gateDebounceTimeoutRef.current = null;
     }
     pendingExploratoryContextRef.current = {
       acceptedSlides: [],
@@ -874,6 +917,7 @@ export function useRealtimeAPI() {
     curatorStatus,
     mode,
     setMode,
+    setSessionAuth,
     start,
     stop,
     clearSlideOptions,

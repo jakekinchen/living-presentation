@@ -17,6 +17,12 @@ export async function POST(
       );
     }
 
+    const authHeader = request.headers.get("authorization") || "";
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (!token || token !== session.presenterToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     // Parse request body
     const body = await request.json();
     const { slide, showQRCode, audienceUrl } = body;
@@ -60,12 +66,34 @@ export async function GET(
     // Get current slide and QR code state
     const slideData = sessionStore.getCurrentSlide(sessionId);
 
-    // Return with default values if slideData is null (shouldn't happen if session was validated)
+    if (!slideData) {
+      return NextResponse.json(
+        { slide: null, showQRCode: false, audienceUrl: null, revision: 0 },
+        {
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+          },
+        }
+      );
+    }
+
+    const clientRevision = request.nextUrl.searchParams.get("rev");
+    if (clientRevision && Number(clientRevision) === slideData.revision) {
+      return new NextResponse(null, {
+        status: 204,
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          "X-Slide-Revision": String(slideData.revision),
+        },
+      });
+    }
+
     return NextResponse.json(
-      slideData ?? { slide: null, showQRCode: false, audienceUrl: null },
+      slideData,
       {
         headers: {
           "Cache-Control": "no-store, no-cache, must-revalidate",
+          "X-Slide-Revision": String(slideData.revision),
         },
       }
     );

@@ -10,6 +10,7 @@ export async function POST() {
 
     return NextResponse.json({
       sessionId: session.id,
+      presenterToken: session.presenterToken,
       audienceUrl,
       expiresAt: session.expiresAt,
     });

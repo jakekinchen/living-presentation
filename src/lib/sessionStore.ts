@@ -7,6 +7,7 @@ interface SessionData extends Session {
   currentSlide: SlideData | null;
   showQRCode: boolean;
   audienceUrl: string | null;
+  slideRevision: number;
 }
 
 // In-memory store for sessions
@@ -32,21 +33,24 @@ export const sessionStore = {
     const id = nanoid(8);
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(); // 4 hours
+    const presenterToken = nanoid(32);
 
     const session: SessionData = {
       id,
       createdAt,
       expiresAt,
+      presenterToken,
       feedback: [],
       currentSlide: null,
       showQRCode: false,
       audienceUrl: null,
+      slideRevision: 0,
     };
 
     sessions.set(id, session);
     console.log(`✅ Created session: ${id}, expires at ${expiresAt}`);
 
-    return { id, createdAt, expiresAt };
+    return { id, createdAt, expiresAt, presenterToken };
   },
 
   /**
@@ -63,7 +67,12 @@ export const sessionStore = {
       return null;
     }
 
-    return { id: session.id, createdAt: session.createdAt, expiresAt: session.expiresAt };
+    return {
+      id: session.id,
+      createdAt: session.createdAt,
+      expiresAt: session.expiresAt,
+      presenterToken: session.presenterToken,
+    };
   },
 
   /**
@@ -143,6 +152,7 @@ export const sessionStore = {
     if (audienceUrl !== undefined) {
       session.audienceUrl = audienceUrl;
     }
+    session.slideRevision += 1;
     console.log(`📺 Updated current slide for session ${sessionId}`);
     return true;
   },
@@ -150,7 +160,7 @@ export const sessionStore = {
   /**
    * Gets the current slide for a session along with QR code state
    */
-  getCurrentSlide(sessionId: string): { slide: SlideData | null; showQRCode: boolean; audienceUrl: string | null } | null {
+  getCurrentSlide(sessionId: string): { slide: SlideData | null; showQRCode: boolean; audienceUrl: string | null; revision: number } | null {
     const session = sessions.get(sessionId);
     if (!session) return null;
 
@@ -164,6 +174,7 @@ export const sessionStore = {
       slide: session.currentSlide,
       showQRCode: session.showQRCode,
       audienceUrl: session.audienceUrl,
+      revision: session.slideRevision,
     };
   },
 };

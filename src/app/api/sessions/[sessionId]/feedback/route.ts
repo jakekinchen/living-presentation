@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionStore } from "@/lib/sessionStore";
+import { getClientId, isRateLimited } from "@/utils/rateLimit";
 
 export async function POST(
   request: NextRequest,
@@ -20,6 +21,14 @@ export async function POST(
     // Parse request body
     const body = await request.json();
     const { text } = body;
+
+    const clientKey = `${sessionId}:${getClientId(request)}`;
+    if (isRateLimited(clientKey, 10, 60_000)) {
+      return NextResponse.json(
+        { error: "Too many requests" },
+        { status: 429 }
+      );
+    }
 
     // Validate feedback text
     if (!text || typeof text !== "string" || text.trim().length === 0) {

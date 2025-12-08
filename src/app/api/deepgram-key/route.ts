@@ -1,11 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { sessionStore } from "@/lib/sessionStore";
+import { getClientId, isRateLimited } from "@/utils/rateLimit";
 
 export const runtime = "nodejs";
 
 // Hardcoded Deepgram project ID to avoid relying on DEEPGRAM_PROJECT_ID env var
 const DEEPGRAM_PROJECT_ID = "551c34f3-7f28-46f5-a800-576627695ad0";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const apiKey = process.env.DEEPGRAM_API_KEY;
 
   if (!apiKey) {
@@ -14,6 +16,27 @@ export async function GET() {
       { error: "Missing DEEPGRAM_API_KEY environment variable" },
       { status: 500 }
     );
+  }
+
+  const sessionId = request.nextUrl.searchParams.get("sessionId");
+  if (!sessionId) {
+    return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
+  }
+
+  const session = sessionStore.getSession(sessionId);
+  if (!session) {
+    return NextResponse.json({ error: "Session not found or expired" }, { status: 404 });
+  }
+
+  const authHeader = request.headers.get("authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token || token !== session.presenterToken) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const clientKey = `${sessionId}:${getClientId(request)}`;
+  if (isRateLimited(clientKey, 5, 60_000)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
   try {

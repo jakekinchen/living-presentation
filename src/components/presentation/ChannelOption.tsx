@@ -1,4 +1,5 @@
-import { SlideData, ChannelType } from "@/hooks/useRealtimeAPI";
+import { ChannelType } from "@/hooks/useRealtimeAPI";
+import type { SlideData } from "@/types/slides";
 import { getBgClass, getBgStyle, isLightColor } from "@/lib/slideColors";
 import { ChevronLeftIcon, ChevronRightIcon, QuestionIcon } from "./Icons";
 

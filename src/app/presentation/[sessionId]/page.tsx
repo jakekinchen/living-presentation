@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { SlideCanvas } from "@/components/presentation/SlideCanvas";
-import type { SlideData } from "@/hooks/useRealtimeAPI";
+import type { SlideData } from "@/types/slides";
 import QRCode from "react-qr-code";
 
 export default function PresentationPage() {
@@ -16,23 +16,8 @@ export default function PresentationPage() {
   const [feedbackText, setFeedbackText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
-
-  // Validate session on mount
-  useEffect(() => {
-    async function validateSession() {
-      try {
-        // Validate by fetching slide endpoint which checks session existence
-        const response = await fetch(`/api/sessions/${sessionId}/slide`, {
-          cache: "no-store",
-        });
-        setSessionValid(response.ok);
-      } catch (error) {
-        console.error("Error validating session:", error);
-        setSessionValid(false);
-      }
-    }
-    validateSession();
-  }, [sessionId]);
+  const lastRevisionRef = useRef<number | null>(null);
+  const submitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Listen for slide updates via postMessage (for presenter's own window)
   useEffect(() => {
@@ -52,34 +37,65 @@ export default function PresentationPage() {
 
   // Poll for slide updates (for remote audience members)
   useEffect(() => {
-    if (!sessionValid) return;
+    let cancelled = false;
 
-    const pollSlides = async () => {
+    const pollSlides = async (isInitial = false) => {
+      if (cancelled) return;
       try {
-        const response = await fetch(`/api/sessions/${sessionId}/slide`, {
-          cache: "no-store",
-        });
-        if (response.ok) {
-          const data = await response.json();
-          if (data.slide) {
-            setSlide(data.slide);
+        const revisionParam =
+          lastRevisionRef.current !== null ? `?rev=${lastRevisionRef.current}` : "";
+        const response = await fetch(
+          `/api/sessions/${sessionId}/slide${revisionParam}`,
+          {
+            cache: "no-store",
           }
-          setShowQRCode(data.showQRCode ?? false);
-          setAudienceUrl(data.audienceUrl ?? null);
+        );
+        if (isInitial) {
+          setSessionValid(response.ok);
         }
+        if (!response.ok) {
+          setSessionValid(false);
+          cancelled = true;
+          return;
+        }
+        if (cancelled) return;
+        if (response.status === 204) {
+          return;
+        }
+        const data = await response.json();
+        if (cancelled) return;
+        lastRevisionRef.current = data.revision ?? null;
+        setSessionValid(true);
+        if (data.slide) {
+          setSlide(data.slide);
+        }
+        setShowQRCode(data.showQRCode ?? false);
+        setAudienceUrl(data.audienceUrl ?? null);
       } catch (error) {
         console.error("Error polling for slides:", error);
+        if (isInitial) {
+          setSessionValid(false);
+        }
       }
     };
 
     // Poll immediately on mount
-    pollSlides();
+    void pollSlides(true);
 
     // Then poll every 2 seconds
-    const interval = setInterval(pollSlides, 2000);
+    const interval = setInterval(() => {
+      if (cancelled) {
+        clearInterval(interval);
+        return;
+      }
+      void pollSlides(false);
+    }, 2000);
 
-    return () => clearInterval(interval);
-  }, [sessionId, sessionValid]);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [sessionId]);
 
   // Handle feedback submission
   const handleSubmitFeedback = async () => {
@@ -99,7 +115,10 @@ export default function PresentationPage() {
       if (response.ok) {
         setSubmitSuccess(true);
         setFeedbackText("");
-        setTimeout(() => {
+        if (submitTimeoutRef.current) {
+          clearTimeout(submitTimeoutRef.current);
+        }
+        submitTimeoutRef.current = setTimeout(() => {
           setShowFeedbackModal(false);
           setSubmitSuccess(false);
         }, 1500);
@@ -113,6 +132,14 @@ export default function PresentationPage() {
       setIsSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (submitTimeoutRef.current) {
+        clearTimeout(submitTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Show loading state while validating
   if (sessionValid === null) {

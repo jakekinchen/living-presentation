@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRealtimeAPI, SlideData, ChannelType } from "@/hooks/useRealtimeAPI";
+import { useRealtimeAPI, ChannelType } from "@/hooks/useRealtimeAPI";
+import type { SlideData } from "@/types/slides";
 import { useFeedback } from "@/hooks/useFeedback";
 import { getAcceptedFileTypes, isOfficeUploadEnabled } from "@/utils/slideConverter";
 import { SlideCanvas } from "./SlideCanvas";
@@ -68,6 +69,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
     pauseGeneration,
     resumeGeneration,
     isGenerationPaused,
+    setSessionAuth,
   } = useRealtimeAPI();
 
   const officeUploadsEnabled = isOfficeUploadEnabled();
@@ -77,6 +79,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
 
   // Session management
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [presenterToken, setPresenterToken] = useState<string | null>(null);
   const [audienceUrl, setAudienceUrl] = useState<string | null>(null);
   const [creatingSession, setCreatingSession] = useState(false);
   const [showQRCode, setShowQRCode] = useState(false);
@@ -127,6 +130,8 @@ export function PresenterView({ onExit }: PresenterViewProps) {
         if (response.ok) {
           const data = await response.json();
           setSessionId(data.sessionId);
+          setPresenterToken(data.presenterToken);
+          setSessionAuth(data.sessionId, data.presenterToken);
           setAudienceUrl(`${window.location.origin}${data.audienceUrl}`);
           console.log("Session created:", data.sessionId);
         } else {
@@ -139,7 +144,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
       }
     }
     createSession();
-  }, []);
+  }, [setSessionAuth]);
 
   // When new feedback arrives, add it to the audience channel
   useEffect(() => {
@@ -199,14 +204,17 @@ export function PresenterView({ onExit }: PresenterViewProps) {
     }
 
     // Broadcast to all audience members via API
-    if (sessionId) {
+    if (sessionId && presenterToken) {
       fetch(`/api/sessions/${sessionId}/slide`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${presenterToken}`,
+        },
         body: JSON.stringify({ slide: currentSlide, showQRCode, audienceUrl }),
       }).catch((err) => console.error("Failed to broadcast slide:", err));
     }
-  }, [currentSlide, presentationWindow, sessionId, showQRCode, audienceUrl]);
+  }, [audienceUrl, currentSlide, presentationWindow, presenterToken, sessionId, showQRCode]);
 
   // Auto-accept slides in stream mode
   useEffect(() => {
@@ -337,7 +345,8 @@ export function PresenterView({ onExit }: PresenterViewProps) {
             {!isRecording && !isConnected && (
               <button
                 onClick={start}
-                className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 sm:px-4 sm:py-2 sm:text-sm"
+                disabled={!sessionId || !presenterToken}
+                className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4 sm:py-2 sm:text-sm"
               >
                 Start Mic
               </button>

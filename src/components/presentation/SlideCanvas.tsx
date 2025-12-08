@@ -1,4 +1,4 @@
-import { SlideData } from "@/hooks/useRealtimeAPI";
+import type { SlideData } from "@/types/slides";
 import { getBgClass, getBgStyle, isLightColor } from "@/lib/slideColors";
 
 interface SlideCanvasProps {
