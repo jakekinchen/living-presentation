@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Slide Quest",
+  title: "SlideQuest",
   description: "Speak your ideas. Watch them become slides.",
+  themeColor: "#ff6347",
 };
 
 export default function RootLayout({

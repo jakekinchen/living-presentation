@@ -1,0 +1,25 @@
+<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff8a6d" />
+      <stop offset="50%" stop-color="#ff6347" />
+      <stop offset="100%" stop-color="#f04a2f" />
+    </linearGradient>
+  </defs>
+
+  <!-- Simplified icon version for small sizes -->
+  <g stroke="url(#iconGradient)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Sound waves -->
+    <path d="M 10 18 Q 12 16, 14 18 Q 16 20, 18 18" fill="none" opacity="0.7" />
+    <path d="M 8 24 Q 12 20, 16 24 Q 20 28, 24 24" fill="none" opacity="0.9" />
+    <path d="M 10 30 Q 12 28, 14 30 Q 16 32, 18 30" fill="none" opacity="0.7" />
+
+    <!-- Slide rectangle -->
+    <rect x="26" y="12" width="16" height="24" rx="2" fill="none" stroke-width="3" />
+
+    <!-- Slide content -->
+    <line x1="29" y1="18" x2="39" y2="18" stroke-width="2" opacity="0.8" />
+    <line x1="29" y1="24" x2="39" y2="24" stroke-width="2" opacity="0.8" />
+    <line x1="29" y1="30" x2="37" y2="30" stroke-width="2" opacity="0.6" />
+  </g>
+</svg>

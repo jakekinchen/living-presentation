@@ -3,19 +3,28 @@
 import { useState, useEffect, useRef } from "react";
 import { useRealtimeAPI, SlideData } from "@/hooks/useRealtimeAPI";
 import { useFeedback } from "@/hooks/useFeedback";
+import { Logo } from "@/components/Logo";
 
-// Background color mapping
+// Background color mapping - new sophisticated slide colors
 const bgColors: Record<string, string> = {
-  slate: "bg-slate-800",
-  blue: "bg-blue-800",
-  amber: "bg-amber-700",
-  green: "bg-green-800",
-  purple: "bg-purple-800",
-  red: "bg-red-800",
-  zinc: "bg-zinc-800",
-  neutral: "bg-neutral-800",
+  ocean: "",  // Will use inline style
+  forest: "",
+  sunset: "",
+  plum: "",
+  rose: "",
+  teal: "",
   white: "bg-white",
   black: "bg-black",
+};
+
+// Slide color definitions
+const slideColors: Record<string, string> = {
+  ocean: "#1e40af",
+  forest: "#047857",
+  sunset: "#ea580c",
+  plum: "#7c3aed",
+  rose: "#e11d48",
+  teal: "#0d9488",
 };
 
 // Light colors that need dark text
@@ -39,6 +48,11 @@ function getBgClass(color: string): string {
 }
 
 function getBgStyle(color: string): React.CSSProperties {
+  // Check if it's one of our named slide colors
+  if (slideColors[color]) {
+    return { backgroundColor: slideColors[color] };
+  }
+  // Otherwise, if it's a hex color, use it directly
   if (color.startsWith("#")) {
     return { backgroundColor: color };
   }
@@ -49,8 +63,8 @@ function getBgStyle(color: string): React.CSSProperties {
 function SlideCanvas({ slide, isFullscreen = false }: { slide: SlideData | null; isFullscreen?: boolean }) {
   if (!slide) {
     return (
-      <div className={`flex h-full w-full items-center justify-center bg-zinc-900 ${isFullscreen ? "min-h-screen" : ""}`}>
-        <div className="text-center text-zinc-600">
+      <div className={`flex h-full w-full items-center justify-center bg-canvas-900 ${isFullscreen ? "min-h-screen" : ""}`}>
+        <div className="text-center text-canvas-600">
           <div className="mb-4 text-6xl">...</div>
           <p className="text-xl">Waiting for first slide</p>
         </div>
@@ -74,23 +88,29 @@ function SlideCanvas({ slide, isFullscreen = false }: { slide: SlideData | null;
   // Special template for audience question slides
   if (slide.source === "question") {
     return (
-      <div className={`flex h-full w-full flex-col items-center justify-center p-12 bg-blue-600 ${isFullscreen ? "min-h-screen" : ""}`}>
-        <div className="max-w-5xl w-full">
+      <div className={`flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-coral-500 via-coral-600 to-coral-700 p-12 ${isFullscreen ? "min-h-screen" : ""}`}>
+        <div className="w-full max-w-5xl">
           {/* Question Icon and Label */}
-          <div className="mb-8 flex items-center justify-center gap-3">
-            <svg className="h-12 w-12 text-blue-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <div className="mb-12 flex items-center justify-center gap-4">
+            <svg className="h-14 w-14 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="text-2xl font-semibold uppercase tracking-wider text-blue-200">
-              Audience Question
+            <span className="text-3xl font-bold uppercase tracking-wide text-white/90">
+              Question from Audience
             </span>
           </div>
 
-          {/* Question Text */}
-          <div className="rounded-2xl border-4 border-blue-400 bg-white p-12 shadow-2xl">
-            <p className="text-center text-4xl font-bold leading-relaxed text-blue-900">
-              {slide.headline}
-            </p>
+          {/* Question Card with glow effect */}
+          <div className="relative">
+            {/* Decorative glow */}
+            <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-coral-300 via-warmslate-50 to-coral-300 opacity-75 blur-sm" />
+
+            {/* Actual card */}
+            <div className="relative rounded-2xl bg-warmslate-50 p-16 shadow-2xl">
+              <p className="text-center text-5xl font-bold leading-relaxed text-canvas-900">
+                {slide.headline}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -107,19 +127,19 @@ function SlideCanvas({ slide, isFullscreen = false }: { slide: SlideData | null;
       style={bgStyle}
     >
       <div className="max-w-4xl text-center">
-        <h1 className={`mb-6 text-5xl font-bold leading-tight ${isLight ? "text-zinc-900" : "text-white"}`}>
+        <h1 className={`mb-6 text-6xl font-bold leading-tight ${isLight ? "text-canvas-900" : "text-white"}`}>
           {slide.headline}
         </h1>
         {slide.subheadline && (
-          <p className={`mb-8 text-2xl ${isLight ? "text-zinc-600" : "text-zinc-300"}`}>
+          <p className={`mb-10 text-3xl font-medium opacity-90 ${isLight ? "text-canvas-600" : "text-white"}`}>
             {slide.subheadline}
           </p>
         )}
         {slide.bullets && slide.bullets.length > 0 && (
-          <ul className="space-y-4 text-left">
+          <ul className="space-y-5 text-left">
             {slide.bullets.map((bullet, i) => (
-              <li key={i} className={`flex items-start gap-4 text-xl ${isLight ? "text-zinc-700" : "text-zinc-200"}`}>
-                <span className={`mt-2 h-2 w-2 flex-shrink-0 rounded-full ${isLight ? "bg-zinc-400" : "bg-zinc-500"}`} />
+              <li key={i} className={`flex items-start gap-5 text-xl ${isLight ? "text-canvas-700" : "text-white"}`}>
+                <span className={`mt-2.5 h-3 w-3 flex-shrink-0 rounded-full ${isLight ? "bg-canvas-400" : "opacity-70"}`} style={isLight ? {} : { backgroundColor: slideColors[slide.backgroundColor || ''] || '#fff' }} />
                 {bullet}
               </li>
             ))}
@@ -143,7 +163,7 @@ function NextSlidePreview({
   if (slide.imageUrl) {
     return (
       <div className="flex flex-col gap-3">
-        <div className="aspect-video overflow-hidden rounded-xl border border-zinc-700 bg-black">
+        <div className="aspect-video overflow-hidden rounded-xl border border-canvas-700 bg-black">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={slide.imageUrl}
@@ -154,13 +174,13 @@ function NextSlidePreview({
         <div className="flex gap-2">
           <button
             onClick={onAccept}
-            className="flex-1 rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+            className="flex-1 rounded-lg bg-coral-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-coral-600"
           >
             Use This Slide
           </button>
           <button
             onClick={onSkip}
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+            className="rounded-lg border border-canvas-700 px-4 py-2 text-sm font-medium text-canvas-400 transition-colors hover:bg-canvas-800/30 hover:text-white"
           >
             Skip
           </button>
@@ -173,20 +193,20 @@ function NextSlidePreview({
   if (slide.source === "question") {
     return (
       <div className="flex flex-col gap-3">
-        <div className="aspect-video overflow-hidden rounded-xl border border-zinc-700 bg-blue-600">
+        <div className="aspect-video overflow-hidden rounded-xl border border-canvas-700 bg-gradient-to-br from-coral-500 via-coral-600 to-coral-700">
           <div className="flex h-full flex-col items-center justify-center p-4">
             {/* Question Icon and Label */}
             <div className="mb-2 flex items-center gap-2">
-              <svg className="h-6 w-6 text-blue-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="h-6 w-6 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span className="text-xs font-semibold uppercase tracking-wider text-blue-200">
+              <span className="text-xs font-semibold uppercase tracking-wider text-white/90">
                 Audience Question
               </span>
             </div>
             {/* Question Text */}
-            <div className="rounded-lg border-2 border-blue-400 bg-white px-4 py-3">
-              <p className="text-center text-sm font-bold leading-tight text-blue-900 line-clamp-3">
+            <div className="rounded-lg border-2 border-coral-300 bg-warmslate-50 px-4 py-3">
+              <p className="line-clamp-3 text-center text-sm font-bold leading-tight text-canvas-900">
                 {slide.headline}
               </p>
             </div>
@@ -195,13 +215,13 @@ function NextSlidePreview({
         <div className="flex gap-2">
           <button
             onClick={onAccept}
-            className="flex-1 rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+            className="flex-1 rounded-lg bg-coral-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-coral-600"
           >
             Use This Slide
           </button>
           <button
             onClick={onSkip}
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+            className="rounded-lg border border-canvas-700 px-4 py-2 text-sm font-medium text-canvas-400 transition-colors hover:bg-canvas-800/30 hover:text-white"
           >
             Skip
           </button>
@@ -217,15 +237,15 @@ function NextSlidePreview({
   return (
     <div className="flex flex-col gap-3">
       <div
-        className={`aspect-video overflow-hidden rounded-xl border border-zinc-700 ${bgClass}`}
+        className={`aspect-video overflow-hidden rounded-xl border border-canvas-700 ${bgClass}`}
         style={bgStyle}
       >
         <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-          <h3 className={`text-lg font-bold leading-tight ${isLight ? "text-zinc-900" : "text-white"}`}>
+          <h3 className={`text-lg font-bold leading-tight ${isLight ? "text-canvas-900" : "text-white"}`}>
             {slide.headline}
           </h3>
           {slide.subheadline && (
-            <p className={`mt-2 text-sm ${isLight ? "text-zinc-600" : "text-zinc-400"}`}>
+            <p className={`mt-2 text-sm ${isLight ? "text-canvas-600" : "text-canvas-400"}`}>
               {slide.subheadline}
             </p>
           )}
@@ -234,13 +254,13 @@ function NextSlidePreview({
       <div className="flex gap-2">
         <button
           onClick={onAccept}
-          className="flex-1 rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+          className="flex-1 rounded-lg bg-coral-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-coral-600"
         >
           Use This Slide
         </button>
         <button
           onClick={onSkip}
-          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+          className="rounded-lg border border-canvas-700 px-4 py-2 text-sm font-medium text-canvas-400 transition-colors hover:bg-canvas-800/30 hover:text-white"
         >
           Skip
         </button>
@@ -277,12 +297,15 @@ function SplashScreen({ onStart }: { onStart: (pdfSlides?: SlideData[]) => void 
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-gradient-to-br from-canvas-900 via-canvas-800 to-canvas-900">
       <div className="text-center">
+        <div className="mb-6 flex items-center justify-center">
+          <Logo size="xl" variant="gradient" animated />
+        </div>
         <h1 className="mb-4 text-5xl font-bold tracking-tight text-white">
-          Slide Quest
+          SlideQuest
         </h1>
-        <p className="max-w-md text-lg text-zinc-400">
+        <p className="max-w-md text-lg text-canvas-400">
           Upload your slides, then speak new ideas into existence.
         </p>
       </div>
@@ -301,16 +324,16 @@ function SplashScreen({ onStart }: { onStart: (pdfSlides?: SlideData[]) => void 
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={isProcessingPdf}
-            className="rounded-lg border-2 border-dashed border-zinc-600 bg-zinc-800/50 px-8 py-6 text-center transition-colors hover:border-zinc-400 hover:bg-zinc-800 disabled:opacity-50"
+            className="rounded-xl border-2 border-dashed border-canvas-600 bg-canvas-800/50 px-8 py-6 text-center transition-all duration-300 hover:border-coral-400/50 hover:bg-canvas-800/60 disabled:opacity-50"
           >
             <div className="flex flex-col items-center gap-2">
-              <svg className="h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-12 w-12 text-canvas-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
               <span className="text-lg font-medium text-white">
                 {isProcessingPdf ? 'Processing PDF...' : 'Upload Existing Slides (PDF)'}
               </span>
-              <span className="text-sm text-zinc-500">Optional - or start with a blank presentation</span>
+              <span className="text-sm text-canvas-500">Optional - or start with a blank presentation</span>
             </div>
           </button>
         ) : (
@@ -328,7 +351,7 @@ function SplashScreen({ onStart }: { onStart: (pdfSlides?: SlideData[]) => void 
                 setUploadedPdfSlides(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
               }}
-              className="mt-2 text-sm text-zinc-400 underline hover:text-zinc-300"
+              className="mt-2 text-sm text-canvas-400 underline hover:text-canvas-300"
             >
               Upload different PDF
             </button>
@@ -338,16 +361,12 @@ function SplashScreen({ onStart }: { onStart: (pdfSlides?: SlideData[]) => void 
 
       <button
         onClick={() => onStart(uploadedPdfSlides || undefined)}
-        className="group relative overflow-hidden rounded-full bg-white px-12 py-4 text-lg font-semibold text-zinc-900 transition-all hover:scale-105 hover:shadow-2xl hover:shadow-white/20"
+        className="rounded-full bg-coral-500 px-12 py-4 text-lg font-semibold text-white shadow-coral-lg transition-all duration-200 hover:scale-105 hover:bg-coral-600 hover:shadow-coral-lg active:scale-[0.98]"
       >
-        <span className="relative z-10">Start Presenting</span>
-        <div className="absolute inset-0 -z-0 bg-gradient-to-r from-blue-400 to-purple-500 opacity-0 transition-opacity group-hover:opacity-100" />
-        <span className="absolute inset-0 z-10 flex items-center justify-center text-white opacity-0 transition-opacity group-hover:opacity-100">
-          Start Presenting
-        </span>
+        Start Presenting
       </button>
 
-      <div className="mt-8 flex items-center gap-2 text-sm text-zinc-500">
+      <div className="mt-8 flex items-center gap-2 text-sm text-canvas-500">
         <MicIcon className="h-4 w-4" />
         <span>Microphone access required for new slides</span>
       </div>
@@ -513,29 +532,30 @@ function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialS
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-950">
+    <div className="flex min-h-screen flex-col bg-canvas-950">
       {/* Header */}
-      <header className="flex flex-col gap-3 border-b border-zinc-800 px-6 py-3">
+      <header className="flex flex-col gap-3 border-b border-canvas-800 px-6 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
+            <Logo size="sm" variant="default" />
             <h1 className="text-lg font-semibold text-white">Presenter Controls</h1>
             <div className="flex items-center gap-2">
               {isRecording ? (
-                <span className="flex items-center gap-2 rounded-full bg-red-500/20 px-3 py-1 text-sm text-red-400">
+                <span className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/15 px-3 py-1.5 text-sm font-semibold text-red-400">
                   <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
                   Live
                 </span>
               ) : isConnected ? (
-                <span className="rounded-full bg-green-500/20 px-3 py-1 text-sm text-green-400">
+                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-400">
                   Connected
                 </span>
               ) : (
-                <span className="rounded-full bg-zinc-700 px-3 py-1 text-sm text-zinc-400">
+                <span className="rounded-full border border-canvas-600 bg-canvas-700 px-3 py-1.5 text-sm font-medium text-canvas-400">
                   Ready
                 </span>
               )}
               {isProcessing && (
-                <span className="rounded-full bg-blue-500/20 px-3 py-1 text-sm text-blue-400">
+                <span className="animate-pulse-slow rounded-full border border-coral-500/30 bg-coral-500/15 px-3 py-1.5 text-sm font-medium text-coral-400">
                   Generating...
                 </span>
               )}
@@ -546,14 +566,14 @@ function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialS
             <button
               onClick={openPresentationWindow}
               disabled={!sessionId}
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-lg border border-canvas-700 bg-canvas-800 px-4 py-2 text-sm font-medium text-canvas-100 transition-all duration-200 hover:border-canvas-600 hover:bg-canvas-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Open Presentation Window
             </button>
             {!isRecording && !isConnected && (
               <button
                 onClick={start}
-                className="flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+                className="flex items-center gap-2 rounded-xl bg-coral-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-coral-500/20 transition-all duration-200 hover:scale-[1.02] hover:bg-coral-600 hover:shadow-xl hover:shadow-coral-500/30 active:scale-[0.98]"
               >
                 <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
@@ -565,7 +585,7 @@ function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialS
             {isRecording && (
               <button
                 onClick={stop}
-                className="flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600"
+                className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500 px-4 py-2 text-sm font-medium text-white ring-4 ring-red-500/20 transition-colors hover:bg-red-600"
               >
                 <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
                 Stop Recording
@@ -573,7 +593,7 @@ function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialS
             )}
             <button
               onClick={handleExit}
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+              className="rounded-lg border border-canvas-700 px-4 py-2 text-sm font-medium text-canvas-400 transition-all duration-200 hover:border-canvas-600 hover:bg-canvas-800/30 hover:text-canvas-200"
             >
               Exit
             </button>
@@ -582,12 +602,12 @@ function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialS
 
         {/* Audience URL Section */}
         {audienceUrl && (
-          <div className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900/50 px-4 py-2">
-            <span className="text-sm text-zinc-500">Share with audience:</span>
-            <code className="flex-1 text-sm text-zinc-300">{audienceUrl}</code>
+          <div className="flex items-center gap-2 rounded-lg border border-canvas-700 bg-canvas-900/50 px-4 py-2">
+            <span className="text-sm text-canvas-500">Share with audience:</span>
+            <code className="flex-1 text-sm text-canvas-300">{audienceUrl}</code>
             <button
               onClick={copyAudienceUrl}
-              className="rounded bg-zinc-700 px-3 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-600"
+              className="rounded bg-canvas-700 px-3 py-1 text-xs font-medium text-canvas-300 transition-colors hover:bg-canvas-600"
             >
               Copy
             </button>
@@ -606,8 +626,8 @@ function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialS
       <div className="flex flex-1 gap-6 p-6">
         {/* Current slide preview */}
         <div className="flex flex-1 flex-col">
-          <div className="mb-3 text-sm font-medium text-zinc-500">CURRENT SLIDE</div>
-          <div className="flex-1 overflow-hidden rounded-xl border border-zinc-800">
+          <div className="mb-3 text-sm font-medium uppercase tracking-wider text-canvas-500">CURRENT SLIDE</div>
+          <div className="flex-1 overflow-hidden rounded-xl border border-canvas-800">
             <SlideCanvas slide={currentSlide} />
           </div>
         </div>
@@ -617,7 +637,7 @@ function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialS
           {/* Next Voice Slide */}
           <div>
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-zinc-500">
+              <span className="text-sm font-medium uppercase tracking-wider text-canvas-500">
                 NEXT VOICE SLIDE {voiceSlides.length > 1 && `(${voiceSlides.length} queued)`}
               </span>
             </div>
@@ -629,7 +649,7 @@ function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialS
                 onSkip={() => skipSlide(nextVoiceSlide.id)}
               />
             ) : (
-              <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed border-zinc-800 text-zinc-600">
+              <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed border-canvas-800 text-canvas-600">
                 {isRecording ? (
                   <div className="text-center">
                     <div className="mb-2 animate-pulse text-2xl">...</div>
@@ -645,7 +665,7 @@ function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialS
           {/* Next Question Slide */}
           <div>
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-zinc-500">
+              <span className="text-sm font-medium uppercase tracking-wider text-canvas-500">
                 NEXT QUESTION SLIDE {questionSlides.length > 1 && `(${questionSlides.length} queued)`}
               </span>
             </div>
@@ -657,24 +677,24 @@ function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialS
                 onSkip={() => skipSlide(nextQuestionSlide.id)}
               />
             ) : (
-              <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed border-zinc-800 text-zinc-600">
+              <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed border-canvas-800 text-canvas-600">
                 <p className="text-sm">No question slides yet</p>
               </div>
             )}
           </div>
 
           {/* Live transcript */}
-          <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">
-            <div className="border-b border-zinc-800 px-4 py-2">
-              <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
+          <div className="overflow-hidden rounded-xl border border-canvas-800 bg-canvas-900/50">
+            <div className="border-b border-canvas-800 px-4 py-2">
+              <span className="text-xs font-medium uppercase tracking-wider text-canvas-600">
                 {isRecording ? "Recording New Slide..." : "Slide Description"}
               </span>
             </div>
             <div className="p-4">
               {transcript ? (
-                <p className="text-sm text-zinc-400">{transcript}</p>
+                <p className="text-sm text-canvas-400">{transcript}</p>
               ) : (
-                <p className="text-sm italic text-zinc-700">
+                <p className="text-sm italic text-canvas-700">
                   {isRecording
                     ? "Describe your new slide idea..."
                     : "Click 'Record New Slide' to describe a new slide idea"}
@@ -684,14 +704,14 @@ function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialS
           </div>
 
           {/* Audience Questions */}
-          <div className="flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">
-            <div className="border-b border-zinc-800 px-4 py-2">
+          <div className="flex-1 overflow-hidden rounded-xl border border-canvas-800 bg-canvas-900/50">
+            <div className="border-b border-canvas-800 px-4 py-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
+                <span className="text-xs font-medium uppercase tracking-wider text-canvas-600">
                   Audience Questions
                 </span>
                 {unreadCount > 0 && (
-                  <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs font-semibold text-white">
+                  <span className="rounded-full bg-coral-500 px-2 py-0.5 text-xs font-semibold text-white">
                     {unreadCount}
                   </span>
                 )}
@@ -699,7 +719,7 @@ function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialS
             </div>
             <div className="max-h-64 overflow-y-auto p-4">
               {feedback.length === 0 ? (
-                <p className="text-sm italic text-zinc-700">
+                <p className="text-sm italic text-canvas-700">
                   No questions yet. Share the audience URL above.
                 </p>
               ) : (
@@ -707,24 +727,24 @@ function PresenterView({ onExit, initialSlides }: { onExit: () => void; initialS
                   {feedback.map((item) => (
                     <div
                       key={item.id}
-                      className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-3"
+                      className="rounded-lg border border-canvas-700 bg-canvas-800/50 p-3"
                     >
-                      <p className="mb-2 text-sm text-zinc-300">{item.text}</p>
+                      <p className="mb-2 text-sm text-canvas-300">{item.text}</p>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleGenerateSlide(item.id, item.text)}
                           disabled={isProcessing}
-                          className="rounded bg-white px-3 py-1 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="rounded-lg bg-coral-500 px-3 py-1 text-xs font-semibold text-white transition-all duration-200 hover:bg-coral-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Generate Slide
                         </button>
                         <button
                           onClick={() => dismissFeedback(item.id)}
-                          className="rounded border border-zinc-600 px-3 py-1 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
+                          className="rounded border border-canvas-600 px-3 py-1 text-xs font-medium text-canvas-400 transition-colors hover:bg-canvas-700 hover:text-white"
                         >
                           Dismiss
                         </button>
-                        <span className="ml-auto text-xs text-zinc-600">
+                        <span className="ml-auto text-xs text-canvas-600">
                           {new Date(item.timestamp).toLocaleTimeString()}
                         </span>
                       </div>
