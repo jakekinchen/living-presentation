@@ -63,6 +63,11 @@ export function PresenterView({ onExit }: PresenterViewProps) {
     addToAudienceChannel,
     isAnsweringQuestion,
     createExploratoryFromPrompt,
+    transcript,
+    fullTranscript,
+    pauseGeneration,
+    resumeGeneration,
+    isGenerationPaused,
   } = useRealtimeAPI();
 
   const officeUploadsEnabled = isOfficeUploadEnabled();
@@ -76,6 +81,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
   const [creatingSession, setCreatingSession] = useState(false);
   const [showQRCode, setShowQRCode] = useState(false);
   const [showUrl, setShowUrl] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
 
   // Feedback hook - will connect when sessionId is set
   const { feedback, dismissFeedback } = useFeedback(sessionId);
@@ -108,6 +114,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
 
   // Check if we have any slide history
   const hasSlideHistory = slideNav.history.length > 0;
+  const displayedTranscript = (fullTranscript || transcript || "").trim();
 
   // Create session on component mount
   useEffect(() => {
@@ -317,6 +324,11 @@ export function PresenterView({ onExit }: PresenterViewProps) {
                   Generating...
                 </span>
               )}
+              {isGenerationPaused && (
+                <span className="rounded-full bg-zinc-700 px-2 py-1 text-xs text-zinc-300 sm:px-3 sm:text-sm">
+                  Paused
+                </span>
+              )}
             </div>
           </div>
 
@@ -327,7 +339,7 @@ export function PresenterView({ onExit }: PresenterViewProps) {
                 onClick={start}
                 className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 sm:px-4 sm:py-2 sm:text-sm"
               >
-                Start
+                Start Mic
               </button>
             )}
             {isRecording && (
@@ -336,6 +348,18 @@ export function PresenterView({ onExit }: PresenterViewProps) {
                 className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-600 sm:px-4 sm:py-2 sm:text-sm"
               >
                 Stop
+              </button>
+            )}
+            {(isConnected || isRecording || isGenerationPaused) && (
+              <button
+                onClick={isGenerationPaused ? resumeGeneration : pauseGeneration}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors sm:px-4 sm:py-2 sm:text-sm ${
+                  isGenerationPaused
+                    ? "bg-green-500 text-white hover:bg-green-600"
+                    : "border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                }`}
+              >
+                {isGenerationPaused ? "Resume Slides" : "Pause Slides"}
               </button>
             )}
             <button
@@ -401,6 +425,12 @@ export function PresenterView({ onExit }: PresenterViewProps) {
               >
                 {showUrl ? "Hide URL" : "Show URL"}
               </button>
+              <button
+                onClick={() => setShowTranscript((prev) => !prev)}
+                className="rounded-lg border border-zinc-700 px-2 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 sm:px-4 sm:py-2 sm:text-sm"
+              >
+                {showTranscript ? "Hide Transcript" : "Show Transcript"}
+              </button>
             </div>
           )}
         </div>
@@ -420,6 +450,17 @@ export function PresenterView({ onExit }: PresenterViewProps) {
           </div>
         )}
       </header>
+
+      {showTranscript && (
+        <div className="mx-6 mt-2 rounded-lg border border-zinc-700 bg-zinc-900/50 px-4 py-3">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Transcript
+          </div>
+          <div className="max-h-40 overflow-y-auto whitespace-pre-wrap text-sm text-zinc-200">
+            {displayedTranscript || "No transcript captured yet."}
+          </div>
+        </div>
+      )}
 
       {/* Error */}
       {error && (

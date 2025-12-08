@@ -56,6 +56,7 @@ export function useRealtimeAPI() {
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string>("");
   const [fullTranscript, setFullTranscript] = useState<string>("");
+  const [isGenerationPaused, setIsGenerationPaused] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [mode, setMode] = useState<PresentationMode>("gated");
   const [gateStatus, setGateStatus] = useState<string>("");
@@ -71,6 +72,7 @@ export function useRealtimeAPI() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const lastIdeaTextRef = useRef<string>("");
   const fullTranscriptRef = useRef<string>("");
+  const generationPausedRef = useRef<boolean>(false);
   const lastGateCheckRef = useRef<string>("");
   const isGatingRef = useRef<boolean>(false);
   const modeRef = useRef<PresentationMode>(mode);
@@ -108,6 +110,10 @@ export function useRealtimeAPI() {
   // Generate slide image from structured content (used in gated mode)
   const generateSlideImage = useCallback(
     async (slideContent: SlideContent) => {
+      if (generationPausedRef.current) {
+        console.log("Generation paused: skipping slide image request");
+        return;
+      }
       console.log("Generating slide image:", slideContent);
       setIsProcessing(true);
 
@@ -148,6 +154,7 @@ export function useRealtimeAPI() {
   // Check with the gate if we should create a slide (gated mode)
   const checkSlideGate = useCallback(
     async (transcriptText: string) => {
+      if (generationPausedRef.current) return;
       if (isGatingRef.current) return;
       if (transcriptText === lastGateCheckRef.current) return;
 
@@ -204,6 +211,10 @@ export function useRealtimeAPI() {
   // In stream mode, we auto-accept slides directly instead of showing options
   const processIdea = useCallback(
     async (title: string, content: string, category: string) => {
+      if (generationPausedRef.current) {
+        console.log("Generation paused: skipping idea processing");
+        return;
+      }
       console.log("Processing idea (stream mode):", { title, content, category });
       setIsProcessing(true);
 
@@ -253,7 +264,7 @@ export function useRealtimeAPI() {
       acceptedSlides: SlideData[];
       audienceQuestions: SlideData[];
       presenterPrompts: { prompt: string; currentSlide: SlideData | null }[];
-    }) => {
+    }): Promise<boolean> => {
       const latestPrompt = presenterPrompts[presenterPrompts.length - 1];
 
       const promptSections: string[] = [];
@@ -363,14 +374,40 @@ export function useRealtimeAPI() {
             "Failed to generate exploratory slides:",
             await response.text()
           );
-          return;
+          return false;
         }
 
         const data = await response.json();
         const followups = (data.followups || []) as FollowupSlideContent[];
-        const cleanedFollowups = followups
+        let cleanedFollowups = followups
           .filter((f) => f && typeof f.headline === "string")
           .slice(0, 1);
+
+        if (!cleanedFollowups.length) {
+          const fallbackHeadline =
+            latestPrompt?.prompt?.slice(0, 60) ||
+            acceptedSlides[acceptedSlides.length - 1]?.headline ||
+            audienceQuestions[audienceQuestions.length - 1]?.headline ||
+            "Next slide idea";
+          cleanedFollowups = [
+            {
+              headline: fallbackHeadline || "Next slide idea",
+              subheadline:
+                latestPrompt?.prompt ||
+                "Exploratory slide based on recent context",
+              bullets: [
+                "Synthesized from presenter intent and recent context",
+                "Generated as a fallback when no slide suggestions returned",
+              ],
+              visualDescription:
+                latestPrompt?.prompt ||
+                "A visual that extends the conversation using recent slides and audience signals",
+              category:
+                acceptedSlides[acceptedSlides.length - 1]?.category ||
+                "concept",
+            },
+          ];
+        }
 
         const sourceTranscriptParts: string[] = [];
         if (latestPrompt) {
@@ -400,8 +437,10 @@ export function useRealtimeAPI() {
             sourceTranscript,
           });
         }
+        return true;
       } catch (err) {
         console.error("Error generating exploratory slides from context:", err);
+        return false;
       } finally {
         setIsProcessing(false);
       }
@@ -411,6 +450,9 @@ export function useRealtimeAPI() {
 
   const triggerExploratoryGeneration = useCallback(
     async (forceNow = false) => {
+      if (generationPausedRef.current && !forceNow) {
+        return;
+      }
       const pendingContext = pendingExploratoryContextRef.current;
       const hasPendingContext =
         pendingContext.acceptedSlides.length > 0 ||
@@ -433,8 +475,6 @@ export function useRealtimeAPI() {
         return;
       }
 
-      lastExploratoryGenerationRef.current = now;
-
       if (exploratoryGenerationTimeoutRef.current) {
         clearTimeout(exploratoryGenerationTimeoutRef.current);
         exploratoryGenerationTimeoutRef.current = null;
@@ -452,7 +492,23 @@ export function useRealtimeAPI() {
         presenterPrompts: [],
       };
 
-      await generateExploratorySlidesFromContext(contextToGenerate);
+      const success = await generateExploratorySlidesFromContext(
+        contextToGenerate
+      );
+      if (success) {
+        lastExploratoryGenerationRef.current = now;
+      } else {
+        // Restore context so it isn't lost on failure
+        pendingExploratoryContextRef.current.acceptedSlides.push(
+          ...contextToGenerate.acceptedSlides
+        );
+        pendingExploratoryContextRef.current.audienceQuestions.push(
+          ...contextToGenerate.audienceQuestions
+        );
+        pendingExploratoryContextRef.current.presenterPrompts.push(
+          ...contextToGenerate.presenterPrompts
+        );
+      }
     },
     [generateExploratorySlidesFromContext]
   );
@@ -497,10 +553,59 @@ export function useRealtimeAPI() {
         currentSlide,
       });
 
+      if (generationPausedRef.current) {
+        return;
+      }
+
       void triggerExploratoryGeneration(true);
     },
     [triggerExploratoryGeneration]
   );
+
+  const pauseGeneration = useCallback(() => {
+    generationPausedRef.current = true;
+    setIsGenerationPaused(true);
+    if (exploratoryGenerationTimeoutRef.current) {
+      clearTimeout(exploratoryGenerationTimeoutRef.current);
+      exploratoryGenerationTimeoutRef.current = null;
+    }
+  }, []);
+
+  const resumeGeneration = useCallback(() => {
+    if (!generationPausedRef.current) return;
+
+    generationPausedRef.current = false;
+    setIsGenerationPaused(false);
+
+    const transcriptText = fullTranscriptRef.current.trim();
+    if (transcriptText) {
+      const alreadyAdded = pendingExploratoryContextRef.current.presenterPrompts.some(
+        (p) => p.prompt === transcriptText
+      );
+      if (!alreadyAdded) {
+        const latestSlide =
+          acceptedSlidesRef.current[acceptedSlidesRef.current.length - 1] ||
+          null;
+        pendingExploratoryContextRef.current.presenterPrompts.push({
+          prompt: transcriptText,
+          currentSlide: latestSlide,
+        });
+      }
+    }
+
+    const hasPendingContext =
+      pendingExploratoryContextRef.current.acceptedSlides.length > 0 ||
+      pendingExploratoryContextRef.current.audienceQuestions.length > 0 ||
+      pendingExploratoryContextRef.current.presenterPrompts.length > 0;
+
+    if (hasPendingContext) {
+      void triggerExploratoryGeneration(true);
+      fullTranscriptRef.current = "";
+      setFullTranscript("");
+      setTranscript("");
+      lastGateCheckRef.current = "";
+    }
+  }, [triggerExploratoryGeneration]);
 
   useEffect(() => {
     return () => {
@@ -663,6 +768,10 @@ export function useRealtimeAPI() {
               : text;
             setFullTranscript(fullTranscriptRef.current);
 
+            if (generationPausedRef.current) {
+              return;
+            }
+
             // Check with the gate when we have enough content
             // Lower threshold (20 chars) - the gate decides if it's slide-worthy
             // First slide (intro) needs even less content to trigger
@@ -737,6 +846,8 @@ export function useRealtimeAPI() {
     acceptedSlidesRef.current = [];
     styleReferencesRef.current = [];
     slideCounterRef.current = 0;
+    generationPausedRef.current = false;
+    setIsGenerationPaused(false);
   }, [resetChannels]);
 
   const clearSlideOptions = useCallback(() => {
@@ -769,6 +880,9 @@ export function useRealtimeAPI() {
     clearAutoAcceptedSlide,
     removeSlideOption,
     recordAcceptedSlide,
+    pauseGeneration,
+    resumeGeneration,
+    isGenerationPaused,
     uploadSlides,
     useUploadedSlide,
     getNextUploadedSlide,
