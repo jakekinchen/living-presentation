@@ -16,7 +16,7 @@
     "cross-fetch": "^4.1.0",
     "libreoffice-file-converter": "^3.3.0",
     "nanoid": "^5.1.6",
-    "next": "16.0.7",
+    "next": "16.0.10",
     "pdfjs-dist": "^5.4.449",
     "react": "19.2.0",
     "react-dom": "19.2.0",
